@@ -1,0 +1,2114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Texture Grab</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root{
+    --bg:#0b0c0d;
+    --bg-panel:#131417;
+    --bg-elev:#1b1d21;
+    --border:#2a2d31;
+    --text:#e8e9ea;
+    --text-dim:#8a8f98;
+    --mono:#c9cdd3;
+    --accent:#5aa9ff;
+    --danger:#ff6b6b;
+    --radius:6px;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font:14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+    overflow:hidden;
+  }
+  .mono{font-family:ui-monospace,"SF Mono","Cascadia Code",Menlo,Consolas,monospace;}
+  button, input, select{
+    font:inherit;
+    color:inherit;
+    background:var(--bg-elev);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+  }
+  button{cursor:pointer;padding:6px 10px;}
+  button:hover{border-color:#3b3f45;}
+  button:active{background:#202226;}
+  button:disabled{opacity:.4;cursor:default;}
+  input[type="text"], input[type="number"], select{padding:6px 8px;}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
+
+  .app{
+    display:grid;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr 6px auto;
+    height:100vh;
+  }
+  header{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:10px 14px;
+    border-bottom:1px solid var(--border);
+    background:var(--bg-panel);
+    flex-wrap:wrap;
+  }
+  header h1{font-size:14px;font-weight:600;margin:0 12px 0 0;letter-spacing:.02em;}
+  header .spacer{flex:1;}
+  .code-entry{display:flex;gap:6px;align-items:center;}
+  .code-entry input{width:8ch;text-transform:uppercase;letter-spacing:.15em;text-align:center;}
+  .icon-btn{padding:6px 8px;line-height:1;}
+
+  main{
+    display:flex;
+    min-height:0;
+  }
+  @media (max-width: 1100px){
+    main{flex-direction:column;overflow-y:auto;}
+    .preview-col{min-height:50vh;}
+    .resize-handle-v{display:none;}
+  }
+
+  /* --- resize handles (drag to resize left/preview/right columns and the library dock) --- */
+  .resize-handle-v{
+    flex:0 0 6px;
+    cursor:col-resize;
+    position:relative;
+    background:transparent;
+  }
+  .resize-handle-v::after{
+    content:"";
+    position:absolute;
+    top:0;bottom:0;left:2px;
+    width:2px;
+    background:var(--border);
+  }
+  .resize-handle-v:hover::after, .resize-handle-v.dragging::after{background:var(--accent);}
+  .resize-handle-h{
+    grid-row:3;
+    cursor:row-resize;
+    position:relative;
+    background:transparent;
+  }
+  .resize-handle-h::after{
+    content:"";
+    position:absolute;
+    left:0;right:0;top:2px;
+    height:2px;
+    background:var(--border);
+  }
+  .resize-handle-h:hover::after, .resize-handle-h.dragging::after{background:var(--accent);}
+
+  .left-col{
+    flex:0 0 300px;
+    min-width:200px;
+    max-width:480px;
+    display:flex;
+    flex-direction:column;
+    min-height:0;
+    border-right:1px solid var(--border);
+    overflow-y:auto;
+  }
+  .preview-col{
+    flex:1 1 auto;
+    min-width:240px;
+    position:relative;
+    min-height:0;
+    display:flex;
+    flex-direction:column;
+    background:#08090a;
+  }
+  .right-col{
+    flex:0 0 220px;
+    min-width:160px;
+    max-width:400px;
+    display:flex;
+    flex-direction:column;
+    min-height:0;
+    border-left:1px solid var(--border);
+    background:var(--bg-panel);
+    overflow-y:auto;
+  }
+
+  /* --- library dock (full width, bottom of the window) --- */
+  .library-bar{
+    border-top:1px solid var(--border);
+    background:var(--bg-panel);
+    height:300px;
+    min-height:120px;
+    max-height:80vh;
+    overflow-y:auto;
+  }
+
+  /* --- Material / Texture sections (right sidebar) --- */
+  .side-section{
+    padding:12px;
+    border-top:1px solid var(--border);
+  }
+  .side-section:first-child{border-top:none;}
+  .side-label{
+    display:block;
+    margin-bottom:8px;
+    font-size:10px;
+    letter-spacing:.1em;
+    text-transform:uppercase;
+    color:var(--text-dim);
+  }
+
+  /* --- pipeline strip: stacked top-to-bottom (right sidebar scrolls vertically, not horizontally) --- */
+  .strip{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:10px;
+  }
+  .strip .arrow{transform:rotate(90deg);}
+  .strip .stage{
+    flex:0 0 auto;
+    width:110px;
+    text-align:center;
+  }
+  .strip .stage .thumb-wrap{
+    position:relative;
+    width:110px;height:110px;
+    border-radius:var(--radius);
+    overflow:hidden;
+    background:#000;
+    border:1px solid var(--border);
+  }
+  .strip .stage canvas{width:100%;height:100%;display:block;image-rendering:pixelated;}
+  .strip .stage .label{
+    margin-top:4px;
+    font-size:10px;
+    letter-spacing:.08em;
+    color:var(--text-dim);
+    text-transform:uppercase;
+  }
+  .strip .stage .dl{
+    position:absolute;
+    top:4px;right:4px;
+    width:20px;height:20px;
+    padding:0;
+    display:flex;align-items:center;justify-content:center;
+    background:rgba(10,10,10,.6);
+    border-color:rgba(255,255,255,.15);
+    font-size:11px;
+    opacity:0;
+    transition:opacity .12s ease;
+  }
+  .strip .stage .thumb-wrap:hover .dl,.strip .stage .dl:focus-visible{opacity:1;}
+  .maps-group{
+    flex:0 0 auto;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:10px;
+  }
+  .arrow{
+    align-self:center;
+    color:var(--text-dim);
+    font-size:16px;
+    flex:0 0 auto;
+  }
+
+  /* --- sliders --- */
+  .controls{padding:12px;display:flex;flex-direction:column;gap:14px;flex:1;}
+  fieldset{
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:10px 10px 12px;
+  }
+  legend{
+    padding:0 6px;
+    font-size:10px;
+    text-transform:uppercase;
+    letter-spacing:.1em;
+    color:var(--text-dim);
+  }
+  .row{
+    display:grid;
+    grid-template-columns: 1fr auto;
+    align-items:center;
+    gap:8px;
+    margin-top:8px;
+  }
+  .row:first-of-type{margin-top:2px;}
+  .row label{font-size:12px;color:var(--text-dim);}
+  .row .val{font-size:11px;color:var(--mono);width:4.5ch;text-align:right;padding:2px 3px;}
+  /* No stepper arrows on the editable slider value — typing is the only way in, matches request */
+  .row .val::-webkit-outer-spin-button, .row .val::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
+  .row .val{-moz-appearance:textfield;}
+  .row input[type="range"]{grid-column:1/-1;width:100%;accent-color:var(--accent);}
+  .row.checkbox{grid-template-columns:auto 1fr;}
+  .row.checkbox input[type="checkbox"]{accent-color:var(--accent);}
+
+  /* --- library (grab gallery) --- */
+  .library{
+    padding:12px;
+    flex:0 0 auto;
+  }
+  .library-header{
+    display:flex;
+    flex-wrap:wrap;
+    align-items:center;
+    gap:8px;
+    margin-bottom:10px;
+  }
+  .library-header .lib-title{
+    font-size:10px;
+    letter-spacing:.1em;
+    color:var(--text-dim);
+    text-transform:uppercase;
+    flex:0 0 auto;
+  }
+  .lib-header-controls{
+    margin-left:auto;
+    display:flex;
+    flex-wrap:wrap;
+    align-items:center;
+    gap:8px;
+  }
+  #btnLibSelect.active{background:var(--accent);color:#04101d;border-color:var(--accent);}
+  .library-delete-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    margin-bottom:10px;
+    font-size:11px;
+    color:var(--text-dim);
+  }
+  button.danger{border-color:rgba(255,107,107,.5);color:var(--danger);}
+  button.danger:hover{border-color:var(--danger);background:rgba(255,107,107,.08);}
+  .lib-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fill, minmax(64px,1fr));
+    gap:10px;
+    max-height:240px;
+    overflow-y:auto;
+    /* overflow-y:auto forces overflow-x to auto too, turning this into a scroll box on
+       both axes — anything positioned outside a card's own box (like the select-mode
+       checkbox badge) would get clipped by that box without this padding. */
+    padding:6px;
+  }
+  .lib-card{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:4px;
+    cursor:pointer;
+    position:relative;
+  }
+  .lib-card .lib-thumb{
+    width:56px;height:56px;
+    border-radius:var(--radius);
+    overflow:hidden;
+    background:#000;
+    border:1px solid var(--border);
+  }
+  .lib-card.active .lib-thumb{border-color:var(--accent);}
+  .lib-card .lib-thumb canvas{width:100%;height:100%;display:block;}
+  .lib-card .lib-label{font-size:9px;color:var(--text-dim);}
+  .lib-card .lib-check{
+    position:absolute;
+    top:2px;left:2px;
+    width:16px;height:16px;
+    border-radius:50%;
+    border:1px solid var(--border);
+    background:var(--bg-elev);
+    display:flex;align-items:center;justify-content:center;
+    font-size:10px;
+    color:transparent;
+    z-index:1;
+  }
+  .lib-card.selected .lib-check{background:var(--accent);border-color:var(--accent);color:#04101d;}
+  .lib-empty{
+    padding:20px 0;
+    text-align:center;
+    color:var(--text-dim);
+    font-size:12px;
+  }
+
+  /* --- empty state / dropzone --- */
+  .empty-state{
+    position:absolute;inset:0;
+    z-index:5;
+    background:#08090a;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:14px;
+    text-align:center;
+    padding:40px 20px;
+    color:var(--text-dim);
+  }
+  .empty-state .big{font-size:15px;color:var(--text);max-width:34ch;}
+  .empty-state .hint{font-size:12px;}
+  .dropzone-active{
+    position:fixed;inset:0;
+    background:rgba(90,169,255,.08);
+    border:2px dashed var(--accent);
+    z-index:50;
+    pointer-events:none;
+    display:flex;align-items:center;justify-content:center;
+    font-size:18px;color:var(--accent);
+  }
+  .hidden{display:none !important;}
+
+  /* --- preview --- */
+  .preview-toolbar{
+    display:flex;
+    gap:10px;
+    align-items:center;
+    padding:10px 12px;
+    border-bottom:1px solid var(--border);
+    flex-wrap:wrap;
+  }
+  .segmented{display:flex;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;}
+  .segmented button{border:none;border-radius:0;border-right:1px solid var(--border);background:transparent;}
+  .segmented button:last-child{border-right:none;}
+  .segmented button.active{background:var(--accent);color:#04101d;}
+  .preview-canvas-wrap{flex:1;min-height:0;position:relative;}
+  .preview-canvas-wrap canvas{width:100%;height:100%;display:block;touch-action:none;}
+  #aiImagePreview{width:100%;height:100%;object-fit:contain;display:block;background:#000;}
+  .export-row{display:flex;gap:8px;align-items:center;}
+  .export-row input[type="text"]{width:16ch;}
+  .status{font-size:11px;color:var(--text-dim);min-width:8ch;}
+
+  .settings-panel{
+    position:absolute;top:46px;right:14px;
+    background:var(--bg-elev);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:12px;
+    width:280px;
+    z-index:40;
+    box-shadow:0 10px 30px rgba(0,0,0,.5);
+  }
+  .settings-panel label{display:block;font-size:11px;color:var(--text-dim);margin-bottom:4px;}
+  .settings-panel input{width:100%;margin-bottom:10px;}
+  .settings-panel .close-row{display:flex;justify-content:flex-end;}
+
+  @media (prefers-reduced-motion: reduce){
+    *{transition:none !important;animation:none !important;}
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header>
+    <h1>TEXTURE GRAB</h1>
+    <button id="btnBrowse">Load photo</button>
+    <input id="fileInput" type="file" accept="image/*" class="hidden" />
+    <div class="code-entry">
+      <input id="codeInput" type="text" maxlength="4" placeholder="CODE" class="mono" />
+      <button id="btnFetchCode">Fetch</button>
+    </div>
+    <div class="spacer"></div>
+    <div class="export-row">
+      <input id="nameInput" type="text" value="material" class="mono" title="Export name" />
+      <button id="btnExport" disabled>Download ZIP</button>
+      <button id="btnDownloadModel" class="hidden">Download .glb</button>
+      <button id="btnDownloadAiImage" class="hidden">Download image</button>
+    </div>
+    <div id="status" class="status mono"></div>
+    <label class="mono" style="font-size:11px;color:var(--text-dim);">SIZE</label>
+    <select id="sizeSelect">
+      <option value="512">512</option>
+      <option value="1024" selected>1024</option>
+      <option value="2048">2048</option>
+    </select>
+    <button id="btnSettings" class="icon-btn" title="Relay settings">⚙</button>
+  </header>
+
+  <main>
+    <section class="left-col">
+      <div id="controls" class="controls hidden"></div>
+    </section>
+
+    <div id="resizeLeft" class="resize-handle-v" title="Drag to resize"></div>
+
+    <section class="preview-col">
+      <div class="preview-toolbar">
+        <div class="segmented" id="shapeToggle">
+          <button data-shape="plane" class="active">Plane</button>
+          <button data-shape="sphere">Sphere</button>
+        </div>
+        <div class="segmented" id="tileToggle">
+          <button data-tile="1" class="active">1×</button>
+          <button data-tile="2">2×</button>
+          <button data-tile="3">3×</button>
+        </div>
+        <div class="segmented" id="orbitToggle">
+          <button data-orbit="0" class="active">Static</button>
+          <button data-orbit="1">Orbit</button>
+        </div>
+        <div class="segmented hidden" id="modelWireToggle">
+          <button data-wire="0" class="active">Solid</button>
+          <button data-wire="1">Wireframe</button>
+        </div>
+        <span id="modelStats" class="status mono hidden"></span>
+      </div>
+      <div class="preview-canvas-wrap" id="previewWrap">
+        <img id="aiImagePreview" class="hidden" alt="AI generated texture" />
+        <div id="emptyState" class="empty-state">
+          <div class="big">Drop a photo, pick a file, or type the code from your Spectacles.</div>
+          <div class="hint mono">Paste also works — Ctrl/Cmd+V</div>
+        </div>
+      </div>
+    </section>
+
+    <div id="resizeRight" class="resize-handle-v" title="Drag to resize"></div>
+
+    <section id="rightCol" class="right-col">
+      <div id="materialMapsPanel" class="hidden">
+        <div class="side-section">
+          <span class="side-label mono">Material</span>
+          <div id="stripMaterial" class="strip"></div>
+        </div>
+        <div class="side-section">
+          <span class="side-label mono">Texture</span>
+          <div id="stripTexture" class="strip"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="resizeBottom" class="resize-handle-h" title="Drag to resize"></div>
+
+  <div class="library-bar">
+    <div class="library">
+      <div class="library-header">
+        <span class="lib-title mono">Library</span>
+        <div class="lib-header-controls">
+          <div class="segmented" id="libKindToggle">
+            <button data-kind="texture" class="active">Textures</button>
+            <button data-kind="ai">AI Gen</button>
+            <button data-kind="model">Models</button>
+          </div>
+          <button id="btnLibSelect" class="icon-btn" title="Select items to delete">Select</button>
+          <button id="btnLibRefresh" class="icon-btn" title="Refresh library">⟳</button>
+        </div>
+      </div>
+      <div id="libDeleteRow" class="library-delete-row hidden">
+        <span id="libSelectCount" class="mono">0 selected</span>
+        <button id="btnLibDelete" class="danger" disabled>Delete</button>
+      </div>
+      <div id="libGrid" class="lib-grid hidden"></div>
+      <div id="libEmpty" class="lib-empty mono hidden">No grabs yet — pinch on Spectacles to send one</div>
+    </div>
+  </div>
+</div>
+
+<div id="dropzoneOverlay" class="dropzone-active hidden">Drop to load</div>
+
+<div id="settingsPanel" class="settings-panel hidden">
+  <div class="close-row"><button id="btnCloseSettings" class="icon-btn">✕</button></div>
+  <label for="relayInput">Relay URL</label>
+  <input id="relayInput" type="text" placeholder="https://your-relay.example.com" class="mono" />
+  <div style="font-size:11px;color:var(--text-dim);">Used for the CODE field above (GET {relay}/grab/CODE). Persisted in the page URL, not stored anywhere else.</div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ============================== math / pipeline ============================== */
+
+function clamp(v, lo, hi){ return v < lo ? lo : v > hi ? hi : v; }
+function clamp01(v){ return clamp(v, 0, 1); }
+function smoothstep(t){ t = clamp01(t); return t*t*(3-2*t); }
+
+function boxBlurH(src,w,h,r,dst){
+  const win = 2*r+1;
+  for(let y=0;y<h;y++){
+    const off = y*w;
+    let sum=0;
+    for(let k=-r;k<=r;k++) sum += src[off+clamp(k,0,w-1)];
+    dst[off] = sum/win;
+    for(let x=1;x<w;x++){
+      sum += src[off+clamp(x+r,0,w-1)] - src[off+clamp(x-r-1,0,w-1)];
+      dst[off+x] = sum/win;
+    }
+  }
+}
+function boxBlurV(src,w,h,r,dst){
+  const win = 2*r+1;
+  for(let x=0;x<w;x++){
+    let sum=0;
+    for(let k=-r;k<=r;k++) sum += src[clamp(k,0,h-1)*w+x];
+    dst[x] = sum/win;
+    for(let y=1;y<h;y++){
+      sum += src[clamp(y+r,0,h-1)*w+x] - src[clamp(y-r-1,0,h-1)*w+x];
+      dst[y*w+x] = sum/win;
+    }
+  }
+}
+// Separable, 3-pass box blur approximating a Gaussian; O(w*h) per pass regardless of radius
+// because each pass uses a running sum instead of resumming the window per pixel.
+function blurPlane(plane,w,h,r,passes){
+  r = Math.max(0, Math.round(r));
+  passes = passes||3;
+  let cur = Float32Array.from(plane);
+  const tmp = new Float32Array(w*h);
+  for(let p=0;p<passes;p++){
+    boxBlurH(cur,w,h,r,tmp);
+    boxBlurV(tmp,w,h,r,cur);
+  }
+  return cur;
+}
+
+function delightChannel(plane,w,h,amount,eps){
+  const r = Math.max(1, Math.round(w/8));
+  const blurred = blurPlane(plane,w,h,r,3);
+  let sum=0; for(let i=0;i<blurred.length;i++) sum+=blurred[i];
+  const mean = sum/blurred.length;
+  const out = new Float32Array(plane.length);
+  for(let i=0;i<plane.length;i++){
+    const albedo = clamp01((plane[i]/(blurred[i]+eps))*mean);
+    out[i] = plane[i]*(1-amount) + albedo*amount;
+  }
+  return out;
+}
+
+function wrapOffsetHalf(plane,w,h){
+  const out = new Float32Array(w*h);
+  const hw = Math.floor(w/2), hh = Math.floor(h/2);
+  for(let y=0;y<h;y++){
+    const sy=(y+hh)%h;
+    for(let x=0;x<w;x++) out[y*w+x] = plane[sy*w+((x+hw)%w)];
+  }
+  return out;
+}
+function mirrorFeatherX(plane,w,h,band){
+  const out = new Float32Array(w*h);
+  const halfW = w/2;
+  for(let y=0;y<h;y++){
+    for(let x=0;x<w;x++){
+      const mx = (w-x)%w;
+      const d = Math.abs(x-halfW);
+      const t = band>0 ? clamp01(d/band) : 1;
+      const a = 0.5*(1-smoothstep(t));
+      out[y*w+x] = (1-a)*plane[y*w+x] + a*plane[y*w+mx];
+    }
+  }
+  return out;
+}
+function mirrorFeatherY(plane,w,h,band){
+  const out = new Float32Array(w*h);
+  const halfH = h/2;
+  for(let y=0;y<h;y++){
+    const my=(h-y)%h;
+    const d = Math.abs(y-halfH);
+    const t = band>0 ? clamp01(d/band) : 1;
+    const a = 0.5*(1-smoothstep(t));
+    for(let x=0;x<w;x++) out[y*w+x] = (1-a)*plane[y*w+x] + a*plane[my*w+x];
+  }
+  return out;
+}
+
+/* --- min-cut seam: same "original vs its mirror" pair mirrorFeatherX/Y blends smoothly,
+   but instead of a blur that ghosts on structured/patterned textures, this finds a single
+   minimum-error boundary (classic image-quilting min-cut, via a small DP) through the band
+   and hard-composites across it — sharp detail preserved on both sides, the seam itself
+   just wanders through whatever's least visually disruptive instead of running straight. */
+function minCutSeamX(lum,w,h,band){
+  const halfW = Math.floor(w/2);
+  const bw = Math.max(1, Math.round(band));
+  const x0 = clamp(halfW-bw, 0, w-1), x1 = clamp(halfW+bw, 0, w-1);
+  const bandWidth = x1-x0+1;
+  const cost = new Float32Array(bandWidth*h);
+  for(let y=0;y<h;y++){
+    for(let bx=0;bx<bandWidth;bx++){
+      const x = x0+bx, mx = (w-x)%w;
+      const d = lum[y*w+x]-lum[y*w+mx];
+      cost[y*bandWidth+bx] = d*d;
+    }
+  }
+  return solveSeamDP(cost, bandWidth, h, x0);
+}
+function minCutSeamY(lum,w,h,band){
+  const halfH = Math.floor(h/2);
+  const bh = Math.max(1, Math.round(band));
+  const y0 = clamp(halfH-bh, 0, h-1), y1 = clamp(halfH+bh, 0, h-1);
+  const bandHeight = y1-y0+1;
+  // Rows = image column x, cols = band position by — so the seam varies smoothly
+  // left-to-right (path indexed by x), matching applyMinCutY's path[x] usage below.
+  const cost = new Float32Array(w*bandHeight);
+  for(let x=0;x<w;x++){
+    for(let by=0;by<bandHeight;by++){
+      const y = y0+by, my = (h-y)%h;
+      const d = lum[y*w+x]-lum[my*w+x];
+      cost[x*bandHeight+by] = d*d;
+    }
+  }
+  return solveSeamDP(cost, bandHeight, w, y0);
+}
+// Generic min-cost path DP: `cost` is a bandSize(rows) x lineLen(cols) grid, one column
+// chosen per row, adjacent rows can shift by at most 1 column — the same recurrence used
+// for classic vertical seam carving.
+function solveSeamDP(cost, lineLen, bandSize, origin){
+  const dp = new Float32Array(lineLen*bandSize);
+  const choice = new Int8Array(lineLen*bandSize);
+  for(let i=0;i<lineLen;i++) dp[i] = cost[i];
+  for(let r=1;r<bandSize;r++){
+    for(let i=0;i<lineLen;i++){
+      let best = dp[(r-1)*lineLen+i], bd = 0;
+      if(i>0 && dp[(r-1)*lineLen+i-1] < best){ best = dp[(r-1)*lineLen+i-1]; bd=-1; }
+      if(i<lineLen-1 && dp[(r-1)*lineLen+i+1] < best){ best = dp[(r-1)*lineLen+i+1]; bd=1; }
+      dp[r*lineLen+i] = cost[r*lineLen+i]+best;
+      choice[r*lineLen+i] = bd;
+    }
+  }
+  let bestI=0, bestCost=Infinity;
+  for(let i=0;i<lineLen;i++){ if(dp[(bandSize-1)*lineLen+i]<bestCost){ bestCost=dp[(bandSize-1)*lineLen+i]; bestI=i; } }
+  const path = new Int32Array(bandSize);
+  path[bandSize-1] = bestI;
+  for(let r=bandSize-1;r>0;r--){ path[r-1] = path[r]-choice[r*lineLen+path[r]]; }
+  return {path, origin, size: lineLen};
+}
+function applyMinCutX(plane,w,h,seam){
+  const out = Float32Array.from(plane);
+  const {path, origin, size} = seam;
+  for(let y=0;y<h;y++){
+    const cut = origin + path[y];
+    for(let bx=0; bx<size; bx++){
+      const x = origin+bx;
+      if(x>cut){
+        const mx = (w-x)%w;
+        out[y*w+x] = plane[y*w+mx];
+      }
+    }
+  }
+  return out;
+}
+function applyMinCutY(plane,w,h,seam){
+  const out = Float32Array.from(plane);
+  const {path, origin, size} = seam;
+  for(let x=0;x<w;x++){
+    for(let by=0; by<size; by++){
+      const y = origin+by;
+      const cut = origin + path[x];
+      if(y>cut){
+        const my = (h-y)%h;
+        out[y*w+x] = plane[my*w+x];
+      }
+    }
+  }
+  return out;
+}
+
+function deriveHeight(L,w,h,gain,invert){
+  const r = Math.max(1, Math.round(w/16));
+  const blurred = blurPlane(L,w,h,r,3);
+  let out = new Float32Array(L.length);
+  for(let i=0;i<L.length;i++){
+    let v = 0.5 + (L[i]-blurred[i])*gain;
+    if(invert) v = 1-v;
+    out[i] = clamp01(v);
+  }
+  return blurPlane(out,w,h,1,1); // light smooth to kill sensor noise
+}
+function deriveNormal(height,w,h,strength,flipGreen){
+  const out = new Float32Array(w*h*3);
+  const at = (x,y)=> height[clamp(y,0,h-1)*w+clamp(x,0,w-1)];
+  for(let y=0;y<h;y++){
+    for(let x=0;x<w;x++){
+      const tl=at(x-1,y-1), t=at(x,y-1), tr=at(x+1,y-1);
+      const l=at(x-1,y),                 r=at(x+1,y);
+      const bl=at(x-1,y+1), b=at(x,y+1), br=at(x+1,y+1);
+      const dx = (tr+2*r+br) - (tl+2*l+bl);
+      const dy = (bl+2*b+br) - (tl+2*t+tr);
+      let nx=-dx*strength, ny=-dy*strength, nz=1;
+      const len = Math.sqrt(nx*nx+ny*ny+nz*nz) || 1;
+      nx/=len; ny/=len; nz/=len;
+      if(flipGreen) ny=-ny;
+      const idx=(y*w+x)*3;
+      out[idx]=nx*0.5+0.5; out[idx+1]=ny*0.5+0.5; out[idx+2]=nz*0.5+0.5;
+    }
+  }
+  return out;
+}
+function deriveAO(height,w,h,strength){
+  const b1 = blurPlane(height,w,h,8,3);
+  const b2 = blurPlane(height,w,h,32,3);
+  const out = new Float32Array(w*h);
+  for(let i=0;i<height.length;i++){
+    const ao1 = clamp01(1-(b1[i]-height[i])*strength);
+    const ao2 = clamp01(1-(b2[i]-height[i])*strength);
+    out[i] = (ao1+ao2)*0.5;
+  }
+  return out;
+}
+function deriveRoughness(L,w,h,base,detail,invert){
+  const b = blurPlane(L,w,h,4,3);
+  const out = new Float32Array(L.length);
+  for(let i=0;i<L.length;i++){
+    let v = base + Math.abs(L[i]-b[i])*detail;
+    if(invert) v = 1-v;
+    out[i] = clamp01(v);
+  }
+  return out;
+}
+
+/* ============================== canvas helpers ============================== */
+
+function grayCanvas(plane,w,h,canvas){
+  canvas = canvas || document.createElement('canvas');
+  canvas.width=w; canvas.height=h;
+  const ctx = canvas.getContext('2d');
+  const id = ctx.createImageData(w,h);
+  for(let i=0;i<w*h;i++){
+    const v = Math.round(clamp01(plane[i])*255);
+    id.data[i*4]=v; id.data[i*4+1]=v; id.data[i*4+2]=v; id.data[i*4+3]=255;
+  }
+  ctx.putImageData(id,0,0);
+  return canvas;
+}
+function rgbCanvas(R,G,B,w,h,canvas){
+  canvas = canvas || document.createElement('canvas');
+  canvas.width=w; canvas.height=h;
+  const ctx = canvas.getContext('2d');
+  const id = ctx.createImageData(w,h);
+  for(let i=0;i<w*h;i++){
+    id.data[i*4]=Math.round(clamp01(R[i])*255);
+    id.data[i*4+1]=Math.round(clamp01(G[i])*255);
+    id.data[i*4+2]=Math.round(clamp01(B[i])*255);
+    id.data[i*4+3]=255;
+  }
+  ctx.putImageData(id,0,0);
+  return canvas;
+}
+function normalCanvas(normalPlane,w,h,canvas){
+  canvas = canvas || document.createElement('canvas');
+  canvas.width=w; canvas.height=h;
+  const ctx = canvas.getContext('2d');
+  const id = ctx.createImageData(w,h);
+  for(let i=0;i<w*h;i++){
+    id.data[i*4]=Math.round(clamp01(normalPlane[i*3])*255);
+    id.data[i*4+1]=Math.round(clamp01(normalPlane[i*3+1])*255);
+    id.data[i*4+2]=Math.round(clamp01(normalPlane[i*3+2])*255);
+    id.data[i*4+3]=255;
+  }
+  ctx.putImageData(id,0,0);
+  return canvas;
+}
+
+/* ============================== state ============================== */
+
+// 'none' skips seam prep entirely (single hero/prop capture); 'mirror' is the existing
+// wrap+feather algorithm. Room to add more (e.g. an AI-generated method) without
+// redesigning the UI — just add another entry here.
+const SEAMLESS_METHODS = [
+  {id:'none', label:'None'},
+  {id:'mirror', label:'Mirror + Feather'},
+  {id:'mincut', label:'Min-Cut Seam'},
+  {id:'ai', label:'AI (Gemini)'},
+];
+
+const state = {
+  size: 1024,
+  sourceEl: null,        // loaded HTMLImageElement
+  delightAmount: 0.85,
+  exposure: 0,
+  saturation: 1,
+  seamlessMethod: 'mirror',
+  tileBand: 0.18,
+  heightGain: 1.0,
+  heightInvert: false,
+  normalStrength: 2.0,
+  normalFlipGreen: false,
+  aoStrength: 1.5,
+  roughBase: 0.55,
+  roughDetail: 0.8,
+  roughInvert: false,
+  metallic: 0.0,
+  sourceLabel: '',
+};
+
+const cache = {
+  srcPlanes: null,     // {R,G,B,w,h}
+  delitPlanes: null,   // {R,G,B}
+  tiledPlanes: null,   // {R,G,B,L}
+  aiTiledPlanes: null, // {R,G,B} — last successful Gemini seamless result, if any
+  height: null,
+  normal: null,
+  ao: null,
+  roughness: null,
+};
+
+const dirty = { stage1:true, stage2:true, height:true, normal:true, ao:true, roughness:true };
+function markDirty(levels){ levels.forEach(l=>dirty[l]=true); }
+
+/* ============================== DOM refs ============================== */
+
+const $ = (id)=>document.getElementById(id);
+const stripMaterialEl = $('stripMaterial');
+const stripTextureEl = $('stripTexture');
+const materialMapsPanelEl = $('materialMapsPanel');
+const emptyStateEl = $('emptyState');
+const controlsEl = $('controls');
+const statusEl = $('status');
+const btnExport = $('btnExport');
+
+const canvases = {
+  source: document.createElement('canvas'),
+  delit: document.createElement('canvas'),
+  tiled: document.createElement('canvas'),
+  basecolor: document.createElement('canvas'),
+  height: document.createElement('canvas'),
+  normal: document.createElement('canvas'),
+  ao: document.createElement('canvas'),
+  roughness: document.createElement('canvas'),
+};
+
+function buildStrip(){
+  stripMaterialEl.innerHTML = '';
+  const order = [
+    ['source','SOURCE'], ['delit','DE-LIT'], ['tiled','TILED']
+  ];
+  order.forEach(([key,label],idx)=>{
+    stripMaterialEl.appendChild(makeStage(key,label));
+    if(idx < order.length-1){
+      const arrow = document.createElement('div');
+      arrow.className='arrow'; arrow.textContent='→';
+      stripMaterialEl.appendChild(arrow);
+    }
+  });
+
+  stripTextureEl.innerHTML = '';
+  const mapsGroup = document.createElement('div');
+  mapsGroup.className='maps-group';
+  [['basecolor','BaseColor'],['height','Height'],['normal','Normal'],['ao','AO'],['roughness','Roughness']]
+    .forEach(([key,label])=> mapsGroup.appendChild(makeStage(key,label,true)));
+  stripTextureEl.appendChild(mapsGroup);
+}
+function makeStage(key,label,isMap){
+  const wrap = document.createElement('div');
+  wrap.className='stage';
+  const tw = document.createElement('div');
+  tw.className='thumb-wrap';
+  tw.appendChild(canvases[key]);
+  const dl = document.createElement('button');
+  dl.className='dl mono'; dl.textContent='↓'; dl.title='Download PNG';
+  dl.addEventListener('click', ()=> downloadCanvas(canvases[key], `${sanitizedName()}_${key}.png`));
+  tw.appendChild(dl);
+  wrap.appendChild(tw);
+  const lab = document.createElement('div');
+  lab.className='label mono';
+  lab.textContent = label;
+  wrap.appendChild(lab);
+  return wrap;
+}
+function downloadCanvas(canvas,filename){
+  canvas.toBlob((blob)=>{
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href=url; a.download=filename; a.click();
+    setTimeout(()=>URL.revokeObjectURL(url), 4000);
+  }, 'image/png');
+}
+function sanitizedName(){
+  const raw = $('nameInput').value.trim() || 'material';
+  return raw.replace(/[^a-z0-9_\-]+/gi,'_');
+}
+
+/* ============================== sliders panel ============================== */
+
+function slider(cfg){
+  const row = document.createElement('div');
+  row.className='row';
+  const label = document.createElement('label');
+  label.textContent = cfg.label; label.htmlFor = cfg.id;
+  const val = document.createElement('input');
+  val.type='number'; val.className='val mono';
+  val.min=cfg.min; val.max=cfg.max; val.step=cfg.step;
+  const input = document.createElement('input');
+  input.type='range'; input.id=cfg.id;
+  input.min=cfg.min; input.max=cfg.max; input.step=cfg.step;
+  input.value = cfg.get();
+  const fmt = cfg.fmt || ((v)=>Number(v).toFixed(2));
+  val.value = fmt(input.value);
+  input.addEventListener('input', ()=>{
+    cfg.set(parseFloat(input.value));
+    val.value = fmt(input.value);
+    markDirty(cfg.dirty);
+    scheduleRecompute();
+  });
+  function commitTyped(){
+    let v = parseFloat(val.value);
+    if(!Number.isFinite(v)) v = cfg.get();
+    v = clamp(v, cfg.min, cfg.max);
+    input.value = v;
+    val.value = fmt(v);
+    cfg.set(v);
+    markDirty(cfg.dirty);
+    scheduleRecompute();
+  }
+  val.addEventListener('change', commitTyped);
+  val.addEventListener('keydown', (e)=>{ if(e.key==='Enter') val.blur(); });
+  row.appendChild(label); row.appendChild(val); row.appendChild(input);
+  return row;
+}
+function checkbox(cfg){
+  const row = document.createElement('div');
+  row.className='row checkbox';
+  const input = document.createElement('input');
+  input.type='checkbox'; input.id=cfg.id; input.checked = cfg.get();
+  const label = document.createElement('label');
+  label.textContent = cfg.label; label.htmlFor = cfg.id;
+  input.addEventListener('change', ()=>{
+    cfg.set(input.checked);
+    markDirty(cfg.dirty);
+    scheduleRecompute();
+  });
+  row.appendChild(input); row.appendChild(label);
+  return row;
+}
+
+function buildControls(){
+  controlsEl.innerHTML = '';
+
+  const delightFs = document.createElement('fieldset');
+  delightFs.innerHTML = '<legend>De-light</legend>';
+  delightFs.appendChild(slider({id:'sDelight',label:'Amount',min:0,max:1,step:0.01,get:()=>state.delightAmount,set:v=>state.delightAmount=v,dirty:['stage1','stage2','height','normal','ao','roughness']}));
+  delightFs.appendChild(slider({id:'sExposure',label:'Exposure',min:-2,max:2,step:0.01,get:()=>state.exposure,set:v=>state.exposure=v,dirty:['stage1','stage2','height','normal','ao','roughness']}));
+  delightFs.appendChild(slider({id:'sSaturation',label:'Saturation',min:0,max:2,step:0.01,get:()=>state.saturation,set:v=>state.saturation=v,dirty:['stage1','stage2','height','normal','ao','roughness']}));
+  controlsEl.appendChild(delightFs);
+
+  const tileFs = document.createElement('fieldset');
+  tileFs.innerHTML = '<legend>Tiling</legend>';
+  const bandRow = slider({id:'sBand',label:'Feather band',min:0,max:0.4,step:0.01,get:()=>state.tileBand,set:v=>state.tileBand=v,dirty:['stage2','height','normal','ao','roughness']});
+
+  const methodLabel = document.createElement('div');
+  methodLabel.className = 'mono';
+  methodLabel.style.cssText = 'font-size:11px;color:var(--text-dim);margin-bottom:6px;';
+  methodLabel.textContent = 'Seamless method';
+  tileFs.appendChild(methodLabel);
+
+  const methodToggle = document.createElement('div');
+  methodToggle.className = 'segmented';
+  methodToggle.style.marginBottom = '10px';
+  const bandUsesMethod = (id)=> id==='mirror' || id==='mincut';
+  const btnGenerateAi = document.createElement('button');
+  btnGenerateAi.textContent = 'Generate Seamless (AI)';
+  btnGenerateAi.style.cssText = 'width:100%;margin-top:8px;';
+  btnGenerateAi.addEventListener('click', generateAiSeamless);
+  SEAMLESS_METHODS.forEach(({id,label})=>{
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.dataset.method = id;
+    if(state.seamlessMethod===id) b.classList.add('active');
+    b.addEventListener('click', ()=>{
+      methodToggle.querySelectorAll('button').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      state.seamlessMethod = id;
+      bandRow.querySelectorAll('input').forEach(el=> el.disabled = !bandUsesMethod(id));
+      btnGenerateAi.classList.toggle('hidden', id!=='ai');
+      markDirty(['stage2','height','normal','ao','roughness']);
+      scheduleRecompute();
+    });
+    methodToggle.appendChild(b);
+  });
+  tileFs.appendChild(methodToggle);
+
+  bandRow.querySelectorAll('input').forEach(el=> el.disabled = !bandUsesMethod(state.seamlessMethod));
+  tileFs.appendChild(bandRow);
+  btnGenerateAi.classList.toggle('hidden', state.seamlessMethod!=='ai');
+  tileFs.appendChild(btnGenerateAi);
+  controlsEl.appendChild(tileFs);
+
+  const heightFs = document.createElement('fieldset');
+  heightFs.innerHTML = '<legend>Height</legend>';
+  heightFs.appendChild(slider({id:'sHGain',label:'Gain',min:0,max:6,step:0.05,get:()=>state.heightGain,set:v=>state.heightGain=v,dirty:['height','normal','ao']}));
+  heightFs.appendChild(checkbox({id:'cHInvert',label:'Invert',get:()=>state.heightInvert,set:v=>state.heightInvert=v,dirty:['height','normal','ao']}));
+  controlsEl.appendChild(heightFs);
+
+  const normalFs = document.createElement('fieldset');
+  normalFs.innerHTML = '<legend>Normal</legend>';
+  normalFs.appendChild(slider({id:'sNStrength',label:'Strength',min:0,max:8,step:0.05,get:()=>state.normalStrength,set:v=>state.normalStrength=v,dirty:['normal']}));
+  normalFs.appendChild(checkbox({id:'cNFlip',label:'Flip green (DirectX)',get:()=>state.normalFlipGreen,set:v=>state.normalFlipGreen=v,dirty:['normal']}));
+  controlsEl.appendChild(normalFs);
+
+  const aoFs = document.createElement('fieldset');
+  aoFs.innerHTML = '<legend>Ambient Occlusion</legend>';
+  aoFs.appendChild(slider({id:'sAOStrength',label:'Strength',min:0,max:5,step:0.05,get:()=>state.aoStrength,set:v=>state.aoStrength=v,dirty:['ao']}));
+  controlsEl.appendChild(aoFs);
+
+  const roughFs = document.createElement('fieldset');
+  roughFs.innerHTML = '<legend>Roughness</legend>';
+  roughFs.appendChild(slider({id:'sRBase',label:'Base',min:0,max:1,step:0.01,get:()=>state.roughBase,set:v=>state.roughBase=v,dirty:['roughness']}));
+  roughFs.appendChild(slider({id:'sRDetail',label:'Detail',min:0,max:3,step:0.02,get:()=>state.roughDetail,set:v=>state.roughDetail=v,dirty:['roughness']}));
+  roughFs.appendChild(checkbox({id:'cRInvert',label:'Invert',get:()=>state.roughInvert,set:v=>state.roughInvert=v,dirty:['roughness']}));
+  controlsEl.appendChild(roughFs);
+
+  const metalFs = document.createElement('fieldset');
+  metalFs.innerHTML = '<legend>Metallic</legend>';
+  metalFs.appendChild(slider({id:'sMetal',label:'Value',min:0,max:1,step:0.01,get:()=>state.metallic,set:v=>state.metallic=v,dirty:[],
+    // metallic is a flat scalar (no MeshStandardMaterial.metalnessMap in this pipeline) — apply directly, no recompute needed
+  }));
+  controlsEl.appendChild(metalFs);
+  // metallic just needs the 3D material updated, not the pixel pipeline
+  metalFs.querySelector('input[type=range]').addEventListener('input', updateMaterialScalar);
+}
+
+/* ============================== pipeline recompute ============================== */
+
+let recomputeTimer = null;
+function scheduleRecompute(){
+  clearTimeout(recomputeTimer);
+  recomputeTimer = setTimeout(runPipeline, 60);
+}
+
+function loadImageToSourcePlanes(img,size){
+  const srcSize = Math.min(img.naturalWidth||img.width, img.naturalHeight||img.height);
+  // Never upscale past what the source actually has — stretching a smaller capture up to
+  // the selected working size just blurs it via canvas interpolation for no real benefit.
+  const outSize = Math.min(size, srcSize);
+  const off = document.createElement('canvas');
+  off.width=outSize; off.height=outSize;
+  const ctx = off.getContext('2d');
+  const sx = ((img.naturalWidth||img.width)-srcSize)/2;
+  const sy = ((img.naturalHeight||img.height)-srcSize)/2;
+  ctx.drawImage(img, sx,sy,srcSize,srcSize, 0,0,outSize,outSize);
+  const id = ctx.getImageData(0,0,outSize,outSize);
+  const n = outSize*outSize;
+  const R=new Float32Array(n), G=new Float32Array(n), B=new Float32Array(n);
+  for(let i=0;i<n;i++){
+    R[i]=id.data[i*4]/255; G[i]=id.data[i*4+1]/255; B[i]=id.data[i*4+2]/255;
+  }
+  return {R,G,B,w:outSize,h:outSize};
+}
+
+function computeStage1(){
+  const sp = cache.srcPlanes;
+  const eps = 1e-4;
+  let R = delightChannel(sp.R,sp.w,sp.h,state.delightAmount,eps);
+  let G = delightChannel(sp.G,sp.w,sp.h,state.delightAmount,eps);
+  let B = delightChannel(sp.B,sp.w,sp.h,state.delightAmount,eps);
+  const expMul = Math.pow(2, state.exposure);
+  const n = sp.w*sp.h;
+  for(let i=0;i<n;i++){
+    let r=R[i]*expMul, g=G[i]*expMul, b=B[i]*expMul;
+    const lum = 0.2126*r+0.7152*g+0.0722*b;
+    r = lum + (r-lum)*state.saturation;
+    g = lum + (g-lum)*state.saturation;
+    b = lum + (b-lum)*state.saturation;
+    R[i]=clamp01(r); G[i]=clamp01(g); B[i]=clamp01(b);
+  }
+  cache.delitPlanes = {R,G,B};
+}
+function computeStage2(){
+  const {w,h} = cache.srcPlanes;
+  const band = state.tileBand * w;
+  const method = state.seamlessMethod;
+  let R, G, B;
+
+  if(method === 'mirror'){
+    function tile(plane){ return mirrorFeatherY(mirrorFeatherX(wrapOffsetHalf(plane,w,h),w,h,band),w,h,band); }
+    R = tile(cache.delitPlanes.R); G = tile(cache.delitPlanes.G); B = tile(cache.delitPlanes.B);
+  } else if(method === 'mincut'){
+    const wR = wrapOffsetHalf(cache.delitPlanes.R,w,h);
+    const wG = wrapOffsetHalf(cache.delitPlanes.G,w,h);
+    const wB = wrapOffsetHalf(cache.delitPlanes.B,w,h);
+    const lum0 = new Float32Array(w*h);
+    for(let i=0;i<w*h;i++) lum0[i] = 0.2126*wR[i]+0.7152*wG[i]+0.0722*wB[i];
+    const seamX = minCutSeamX(lum0,w,h,band);
+    const R1 = applyMinCutX(wR,w,h,seamX), G1 = applyMinCutX(wG,w,h,seamX), B1 = applyMinCutX(wB,w,h,seamX);
+    const lum1 = new Float32Array(w*h);
+    for(let i=0;i<w*h;i++) lum1[i] = 0.2126*R1[i]+0.7152*G1[i]+0.0722*B1[i];
+    const seamY = minCutSeamY(lum1,w,h,band);
+    R = applyMinCutY(R1,w,h,seamY); G = applyMinCutY(G1,w,h,seamY); B = applyMinCutY(B1,w,h,seamY);
+  } else if(method === 'ai' && cache.aiTiledPlanes){
+    R = cache.aiTiledPlanes.R; G = cache.aiTiledPlanes.G; B = cache.aiTiledPlanes.B;
+  } else {
+    // 'none' — or 'ai' before a result has been generated yet: skip seam prep entirely
+    // and show the raw crop rather than leave the pipeline with stale/empty planes.
+    R = Float32Array.from(cache.delitPlanes.R);
+    G = Float32Array.from(cache.delitPlanes.G);
+    B = Float32Array.from(cache.delitPlanes.B);
+  }
+
+  const n=w*h;
+  const L = new Float32Array(n);
+  for(let i=0;i<n;i++) L[i]=0.2126*R[i]+0.7152*G[i]+0.0722*B[i];
+  cache.tiledPlanes = {R,G,B,L};
+}
+
+function blobToBase64(blob){
+  return new Promise((resolve,reject)=>{
+    const reader = new FileReader();
+    reader.onload = ()=> resolve(String(reader.result).split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+// Sends the current de-lit (pre-tiling) crop to Gemini via the relay, asking it to make
+// the texture tile seamlessly; the result replaces cache.aiTiledPlanes and feeds the same
+// downstream height/normal/AO/roughness derivation the other seamless methods use.
+async function generateAiSeamless(){
+  const relay = getRelayUrl();
+  if(!relay){ statusEl.textContent = 'Set relay URL in ⚙ first'; return; }
+  if(!cache.delitPlanes || !cache.srcPlanes){ statusEl.textContent = 'Load a texture first'; return; }
+  const {w,h} = cache.srcPlanes;
+
+  statusEl.textContent = 'Generating seamless texture (AI)…';
+  try{
+    const srcCanvas = rgbCanvas(cache.delitPlanes.R, cache.delitPlanes.G, cache.delitPlanes.B, w, h);
+    const blob = await new Promise(resolve=> srcCanvas.toBlob(resolve, 'image/jpeg', 0.92));
+    const base64 = await blobToBase64(blob);
+
+    const res = await fetch(`${relay.replace(/\/$/,'')}/seamless-gemini`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({image: base64}),
+    });
+    if(!res.ok){
+      const body = await res.json().catch(()=>({}));
+      throw new Error(body.error || ('HTTP '+res.status));
+    }
+    const data = await res.json();
+
+    const img = new Image();
+    await new Promise((resolve,reject)=>{
+      img.onload = resolve;
+      img.onerror = ()=> reject(new Error('bad image data'));
+      img.src = 'data:image/jpeg;base64,'+data.image;
+    });
+
+    const resampled = loadImageToSourcePlanes(img, state.size);
+    cache.aiTiledPlanes = {R: resampled.R, G: resampled.G, B: resampled.B};
+    markDirty(['stage2','height','normal','ao','roughness']);
+    scheduleRecompute();
+    statusEl.textContent = 'AI seamless texture applied';
+  }catch(err){
+    statusEl.textContent = 'AI seamless failed: '+err.message;
+  }
+}
+
+function computeHeight(){
+  const {w,h} = cache.srcPlanes;
+  cache.height = deriveHeight(cache.tiledPlanes.L,w,h,state.heightGain,state.heightInvert);
+}
+function computeNormal(){
+  const {w,h} = cache.srcPlanes;
+  cache.normal = deriveNormal(cache.height,w,h,state.normalStrength,state.normalFlipGreen);
+}
+function computeAO(){
+  const {w,h} = cache.srcPlanes;
+  cache.ao = deriveAO(cache.height,w,h,state.aoStrength);
+}
+function computeRoughness(){
+  const {w,h} = cache.srcPlanes;
+  cache.roughness = deriveRoughness(cache.tiledPlanes.L,w,h,state.roughBase,state.roughDetail,state.roughInvert);
+}
+
+function runPipeline(){
+  if(!cache.srcPlanes) return;
+  const {w,h} = cache.srcPlanes;
+  const t0 = performance.now();
+
+  if(dirty.stage1){ computeStage1(); dirty.stage1=false; }
+  if(dirty.stage2){ computeStage2(); dirty.stage2=false; }
+  if(dirty.height){ computeHeight(); dirty.height=false; }
+  if(dirty.normal){ computeNormal(); dirty.normal=false; }
+  if(dirty.ao){ computeAO(); dirty.ao=false; }
+  if(dirty.roughness){ computeRoughness(); dirty.roughness=false; }
+
+  rgbCanvas(cache.srcPlanes.R,cache.srcPlanes.G,cache.srcPlanes.B,w,h,canvases.source);
+  rgbCanvas(cache.delitPlanes.R,cache.delitPlanes.G,cache.delitPlanes.B,w,h,canvases.delit);
+  rgbCanvas(cache.tiledPlanes.R,cache.tiledPlanes.G,cache.tiledPlanes.B,w,h,canvases.tiled);
+  rgbCanvas(cache.tiledPlanes.R,cache.tiledPlanes.G,cache.tiledPlanes.B,w,h,canvases.basecolor);
+  grayCanvas(cache.height,w,h,canvases.height);
+  normalCanvas(cache.normal,w,h,canvases.normal);
+  grayCanvas(cache.ao,w,h,canvases.ao);
+  grayCanvas(cache.roughness,w,h,canvases.roughness);
+
+  updateThreeTextures();
+  const ms = (performance.now()-t0).toFixed(0);
+  statusEl.textContent = `${w}×${h} · ${ms}ms`;
+  btnExport.disabled = false;
+}
+
+function fullRecompute(){
+  markDirty(['stage1','stage2','height','normal','ao','roughness']);
+  runPipeline();
+}
+
+/* ============================== intake ============================== */
+
+function onImageLoaded(img, label){
+  exitModelPreview();
+  exitAiPreview();
+  console.log('[TextureGrab] source image natural size:', img.naturalWidth, 'x', img.naturalHeight, '— working size:', state.size);
+  state.sourceEl = img;
+  state.sourceLabel = label;
+  cache.srcPlanes = loadImageToSourcePlanes(img, state.size);
+  emptyStateEl.classList.add('hidden');
+  materialMapsPanelEl.classList.remove('hidden');
+  controlsEl.classList.remove('hidden');
+  fullRecompute();
+}
+
+function loadFromBlob(blob, label){
+  const url = URL.createObjectURL(blob);
+  const img = new Image();
+  img.onload = ()=>{ onImageLoaded(img, label); URL.revokeObjectURL(url); };
+  img.onerror = ()=>{ statusEl.textContent = 'Could not read image'; URL.revokeObjectURL(url); };
+  img.src = url;
+}
+
+$('btnBrowse').addEventListener('click', ()=> $('fileInput').click());
+$('fileInput').addEventListener('change', (e)=>{
+  const f = e.target.files[0];
+  if(f) loadFromBlob(f, 'file:'+f.name);
+});
+
+let dragDepth = 0;
+window.addEventListener('dragenter', (e)=>{
+  if(e.dataTransfer && Array.from(e.dataTransfer.types||[]).includes('Files')){
+    dragDepth++; $('dropzoneOverlay').classList.remove('hidden');
+  }
+});
+window.addEventListener('dragleave', ()=>{
+  dragDepth = Math.max(0,dragDepth-1);
+  if(dragDepth===0) $('dropzoneOverlay').classList.add('hidden');
+});
+window.addEventListener('dragover', (e)=> e.preventDefault());
+window.addEventListener('drop', (e)=>{
+  e.preventDefault();
+  dragDepth = 0; $('dropzoneOverlay').classList.add('hidden');
+  const f = e.dataTransfer.files && e.dataTransfer.files[0];
+  if(f && f.type.startsWith('image/')) loadFromBlob(f, 'drop:'+f.name);
+});
+window.addEventListener('paste', (e)=>{
+  const items = e.clipboardData && e.clipboardData.items;
+  if(!items) return;
+  for(const item of items){
+    if(item.type.startsWith('image/')){
+      const blob = item.getAsFile();
+      if(blob) loadFromBlob(blob, 'paste');
+      break;
+    }
+  }
+});
+
+/* relay URL resolution, in priority order:
+   1. #relay=... in the page URL (lets you point at a different relay for one session)
+   2. localStorage (sticks across reloads once you've set it via the ⚙ panel once)
+   3. DEFAULT_RELAY_URL (works out of the box with zero setup) */
+const DEFAULT_RELAY_URL = 'https://gwgagumgbnhzbxofghjy.snapcloud.dev/functions/v1';
+const RELAY_STORAGE_KEY = 'textureGrabRelayUrl';
+function getRelayUrl(){
+  const m = location.hash.match(/relay=([^&]+)/);
+  if(m) return decodeURIComponent(m[1]);
+  return localStorage.getItem(RELAY_STORAGE_KEY) || DEFAULT_RELAY_URL;
+}
+function setRelayUrl(url){
+  const params = new URLSearchParams(location.hash.replace(/^#/,''));
+  if(url) params.set('relay', url); else params.delete('relay');
+  location.hash = params.toString();
+  if(url) localStorage.setItem(RELAY_STORAGE_KEY, url);
+  else localStorage.removeItem(RELAY_STORAGE_KEY);
+}
+$('relayInput').value = getRelayUrl();
+$('btnSettings').addEventListener('click', ()=> $('settingsPanel').classList.toggle('hidden'));
+$('btnCloseSettings').addEventListener('click', ()=> $('settingsPanel').classList.add('hidden'));
+$('relayInput').addEventListener('change', (e)=>{
+  setRelayUrl(e.target.value.trim());
+  refreshLibrary();
+});
+
+$('btnFetchCode').addEventListener('click', async ()=>{
+  const relay = getRelayUrl();
+  const code = $('codeInput').value.trim().toUpperCase();
+  if(!relay){ statusEl.textContent='Set relay URL in ⚙ first'; $('settingsPanel').classList.remove('hidden'); return; }
+  if(code.length!==4){ statusEl.textContent='Enter the 4-char code'; return; }
+  statusEl.textContent='Fetching…';
+  try{
+    const res = await fetch(`${relay.replace(/\/$/,'')}/grab/${code}`);
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const data = await res.json();
+    const img = new Image();
+    img.onload = ()=>{
+      onImageLoaded(img, 'code:'+code);
+      libraryState.selectedCode = code;
+      refreshLibrary();
+    };
+    img.onerror = ()=> statusEl.textContent='Bad image data';
+    img.src = 'data:image/jpeg;base64,'+data.image;
+  }catch(err){
+    statusEl.textContent = 'Fetch failed: '+err.message;
+  }
+});
+
+/* ============================== library (grab gallery) ============================== */
+
+const libraryState = { items:[], kindFilter:'texture', selectedCode:null, error:null, selectMode:false, selected:new Set() };
+
+function filteredLibraryItems(){
+  return libraryState.items.filter(it=> it.kind===libraryState.kindFilter);
+}
+const thumbCache = new Map();     // "code|style" -> canvas (small thumb, ball render or flat crop)
+const fullImageCache = new Map(); // code -> HTMLImageElement (full res)
+const THUMB_SIZE = 64;
+
+const libGridEl = $('libGrid');
+const libEmptyEl = $('libEmpty');
+const btnLibSelectEl = $('btnLibSelect');
+const libDeleteRowEl = $('libDeleteRow');
+const libSelectCountEl = $('libSelectCount');
+const btnLibDeleteEl = $('btnLibDelete');
+
+function formatTimestamp(iso){
+  const d = new Date(iso);
+  const now = new Date();
+  const time = d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+  return d.toDateString()===now.toDateString() ? time : d.toLocaleDateString([], {month:'short',day:'numeric'})+' '+time;
+}
+
+async function fetchListSafe(path){
+  const relay = getRelayUrl();
+  try{
+    const res = await fetch(`${relay.replace(/\/$/,'')}${path}`);
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const data = await res.json();
+    return {items: data.items || [], error: null};
+  }catch(err){
+    return {items: [], error: err.message};
+  }
+}
+
+async function refreshLibrary(){
+  const relay = getRelayUrl();
+  if(!relay){
+    libraryState.items = [];
+    libraryState.error = 'Set relay URL in ⚙ first';
+    renderLibrary();
+    return;
+  }
+  const [textures, models] = await Promise.all([
+    fetchListSafe('/list?limit=60'),
+    fetchListSafe('/list-models?limit=60'),
+  ]);
+  // source:'ai' (see migration 0004_grab_source.sql) marks a GeminiTextureGenerate.ts upload —
+  // those get their own "AI Gen" library tab instead of being lumped in with photo captures.
+  const texItems = textures.items.map(it=>({...it, kind: it.source==='ai' ? 'ai' : 'texture'}));
+  const modelItems = models.items.map(it=>({...it, kind:'model'}));
+  libraryState.items = [...texItems, ...modelItems]
+    .sort((a,b)=> new Date(b.created_at) - new Date(a.created_at));
+
+  // A missing/undeployed list-models function shouldn't blank out working textures —
+  // only surface an error if BOTH lists came back empty with a failure.
+  if(textures.error && texItems.length===0 && modelItems.length===0){
+    libraryState.error = 'Library fetch failed: '+textures.error;
+  } else {
+    libraryState.error = null;
+    if(models.error) console.warn('[library] list-models unavailable:', models.error);
+  }
+  renderLibrary();
+}
+
+function renderLibrary(){
+  const has = filteredLibraryItems().length > 0;
+  const emptyDefault = libraryState.kindFilter==='model'
+    ? 'No models yet — generate one in 3D Gen mode'
+    : libraryState.kindFilter==='ai'
+    ? 'No AI Gen images yet — generate one in AI Gen mode'
+    : 'No grabs yet — pinch on Spectacles to send one';
+  libEmptyEl.textContent = libraryState.error || emptyDefault;
+  libEmptyEl.classList.toggle('hidden', has);
+  libGridEl.classList.toggle('hidden', !has);
+  if(!has) return;
+  renderGrid();
+}
+
+function loadFullImage(code){
+  if(fullImageCache.has(code)) return Promise.resolve(fullImageCache.get(code));
+  const relay = getRelayUrl();
+  return fetch(`${relay.replace(/\/$/,'')}/grab/${code}`)
+    .then(res=>{ if(!res.ok) throw new Error('HTTP '+res.status); return res.json(); })
+    .then(data=>new Promise((resolve,reject)=>{
+      const img = new Image();
+      img.onload = ()=>{ fullImageCache.set(code,img); resolve(img); };
+      img.onerror = reject;
+      img.src = 'data:image/jpeg;base64,'+data.image;
+    }))
+    .catch(()=>null);
+}
+
+// Rendered at 3x the display size and downscaled on the way out — anything rendered
+// directly at 64px reads as flat/blocky regardless of lighting; supersampling like this
+// is what makes it read as a crisp thumbnail instead of a blurry one.
+const THUMB_RENDER_SIZE = THUMB_SIZE * 3;
+
+function squareCrop(img, size){
+  const c = document.createElement('canvas');
+  c.width = size; c.height = size;
+  const s = Math.min(img.width, img.height);
+  c.getContext('2d').drawImage(img, (img.width-s)/2, (img.height-s)/2, s, s, 0, 0, size, size);
+  return c;
+}
+function renderFlatThumb(img){
+  return squareCrop(img, THUMB_SIZE);
+}
+
+/* --- model thumbnail: a static 2D snapshot of the loaded glb, not a live/interactive
+   preview — one shared offscreen renderer, reused across items the same way the old
+   ball renderer was. Falls back to a plain icon if the glb fails to load. */
+let modelThumbRenderer=null, modelThumbScene=null, modelThumbCamera=null;
+function ensureModelThumbRenderer(){
+  if(modelThumbRenderer) return;
+  modelThumbRenderer = new THREE.WebGLRenderer({antialias:true, alpha:true, preserveDrawingBuffer:true});
+  modelThumbRenderer.setSize(THUMB_RENDER_SIZE, THUMB_RENDER_SIZE);
+  modelThumbRenderer.setPixelRatio(1);
+  modelThumbRenderer.outputEncoding = THREE.sRGBEncoding;
+  modelThumbScene = new THREE.Scene();
+  modelThumbCamera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
+  modelThumbScene.add(new THREE.HemisphereLight(0xffffff, 0x2a2d33, 1.3));
+  const key = new THREE.DirectionalLight(0xffffff, 1.6);
+  key.position.set(2,3,2);
+  modelThumbScene.add(key);
+  const fill = new THREE.DirectionalLight(0xffffff, 0.55);
+  fill.position.set(-2,-1,1.5);
+  modelThumbScene.add(fill);
+  const rim = new THREE.DirectionalLight(0xffffff, 0.9);
+  rim.position.set(-1.2,1.8,-2);
+  modelThumbScene.add(rim);
+}
+function renderModelSnapshot(gltf){
+  ensureModelThumbRenderer();
+  const root = gltf.scene;
+  const box = new THREE.Box3().setFromObject(root);
+  const size = new THREE.Vector3(); box.getSize(size);
+  const center = new THREE.Vector3(); box.getCenter(center);
+  root.position.sub(center);
+  const maxDim = Math.max(size.x, size.y, size.z) || 1;
+  root.scale.setScalar(1.4/maxDim);
+
+  modelThumbScene.add(root);
+  modelThumbCamera.position.set(1.1, 0.9, 1.6);
+  modelThumbCamera.lookAt(0,0,0);
+  modelThumbRenderer.render(modelThumbScene, modelThumbCamera);
+
+  const out = document.createElement('canvas');
+  out.width = THUMB_SIZE; out.height = THUMB_SIZE;
+  const outCtx = out.getContext('2d');
+  outCtx.imageSmoothingEnabled = true;
+  outCtx.imageSmoothingQuality = 'high';
+  outCtx.drawImage(modelThumbRenderer.domElement, 0, 0, THUMB_RENDER_SIZE, THUMB_RENDER_SIZE, 0, 0, THUMB_SIZE, THUMB_SIZE);
+
+  modelThumbScene.remove(root);
+  root.traverse(o=>{
+    if(o.geometry) o.geometry.dispose();
+    if(o.material){ (Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m.dispose()); }
+  });
+  return out;
+}
+function renderModelFallbackIcon(){
+  const c = document.createElement('canvas');
+  c.width = THUMB_SIZE; c.height = THUMB_SIZE;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#1b1d21';
+  ctx.fillRect(0,0,THUMB_SIZE,THUMB_SIZE);
+  ctx.fillStyle = '#5aa9ff';
+  ctx.font = '28px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('◆', THUMB_SIZE/2, THUMB_SIZE/2+1);
+  return c;
+}
+
+function ensureThumb(item, onReady){
+  const key = item.code+'|'+item.kind;
+  if(thumbCache.has(key)){ onReady(thumbCache.get(key)); return; }
+  if(item.kind==='model'){
+    gltfLoader.load(
+      item.url,
+      (gltf)=>{
+        const canvas = renderModelSnapshot(gltf);
+        thumbCache.set(key, canvas);
+        onReady(canvas);
+      },
+      undefined,
+      ()=>{
+        const canvas = renderModelFallbackIcon();
+        thumbCache.set(key, canvas);
+        onReady(canvas);
+      }
+    );
+    return;
+  }
+  loadFullImage(item.code).then(img=>{
+    if(!img) return;
+    const canvas = renderFlatThumb(img);
+    thumbCache.set(key, canvas);
+    onReady(canvas);
+  });
+}
+
+function truncateLabel(s, n){
+  return s.length>n ? s.slice(0,n-1)+'…' : s;
+}
+
+function itemKey(item){ return item.kind+':'+item.code; }
+
+function selectLibraryItem(item){
+  if(libraryState.selectMode){
+    toggleItemSelected(item);
+    return;
+  }
+  libraryState.selectedCode = item.code;
+  if(item.kind==='model'){
+    loadModelIntoPreview(item);
+  } else if(item.kind==='ai'){
+    loadAiImageIntoPreview(item);
+  } else {
+    loadFullImage(item.code).then(img=>{ if(img) onImageLoaded(img, 'code:'+item.code); });
+  }
+  renderLibrary();
+}
+
+function toggleItemSelected(item){
+  const key = itemKey(item);
+  if(libraryState.selected.has(key)) libraryState.selected.delete(key);
+  else libraryState.selected.add(key);
+  renderGrid();
+  updateDeleteRow();
+}
+
+function updateDeleteRow(){
+  const n = libraryState.selected.size;
+  libSelectCountEl.textContent = `${n} selected`;
+  btnLibDeleteEl.disabled = n===0;
+}
+
+function setSelectMode(on){
+  libraryState.selectMode = on;
+  libraryState.selected.clear();
+  btnLibSelectEl.classList.toggle('active', on);
+  libDeleteRowEl.classList.toggle('hidden', !on);
+  updateDeleteRow();
+  renderGrid();
+}
+
+async function bulkDeleteSelected(){
+  // The /delete endpoint only knows "texture"|"model" (it's about which table to hit) —
+  // an "ai" library item still lives in the `grabs` table, same as a captured "texture" one.
+  const items = libraryState.items
+    .filter(it=> libraryState.selected.has(itemKey(it)))
+    .map(it=>({code:it.code, kind: it.kind==='model' ? 'model' : 'texture'}));
+  if(items.length===0) return;
+  if(!confirm(`Delete ${items.length} item${items.length===1?'':'s'}? This can't be undone.`)) return;
+
+  const relay = getRelayUrl();
+  btnLibDeleteEl.disabled = true;
+  try{
+    const res = await fetch(`${relay.replace(/\/$/,'')}/delete`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({items}),
+    });
+    if(!res.ok) throw new Error('HTTP '+res.status);
+  }catch(err){
+    alert('Delete failed: '+err.message);
+  }
+  setSelectMode(false);
+  await refreshLibrary();
+}
+
+btnLibSelectEl.addEventListener('click', ()=> setSelectMode(!libraryState.selectMode));
+btnLibDeleteEl.addEventListener('click', bulkDeleteSelected);
+
+function renderGrid(){
+  libGridEl.innerHTML = '';
+  filteredLibraryItems().forEach(item=>{
+    const selected = libraryState.selected.has(itemKey(item));
+    const card = document.createElement('div');
+    card.className = 'lib-card'
+      + (item.code===libraryState.selectedCode ? ' active' : '')
+      + (selected ? ' selected' : '');
+    card.title = ((item.kind==='model' || item.kind==='ai') && item.prompt ? item.prompt+' — ' : '') + new Date(item.created_at).toLocaleString();
+    const thumbHolder = document.createElement('div');
+    thumbHolder.className = 'lib-thumb';
+    card.appendChild(thumbHolder);
+    ensureThumb(item, (canvas)=>{ thumbHolder.innerHTML=''; thumbHolder.appendChild(canvas); });
+    if(libraryState.selectMode){
+      const check = document.createElement('div');
+      check.className = 'lib-check';
+      check.textContent = '✓';
+      card.appendChild(check);
+    }
+    const label = document.createElement('div');
+    label.className = 'lib-label mono';
+    label.textContent = (item.kind==='model' || item.kind==='ai') && item.prompt
+      ? truncateLabel(item.prompt, 14)
+      : formatTimestamp(item.created_at);
+    card.appendChild(label);
+    card.addEventListener('click', ()=> selectLibraryItem(item));
+    libGridEl.appendChild(card);
+  });
+}
+
+document.querySelectorAll('#libKindToggle button').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('#libKindToggle button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    libraryState.kindFilter = btn.dataset.kind;
+    // Selections from the other kind would be invisible after switching filters —
+    // clear them rather than leave a confusing stale "N selected" count around.
+    libraryState.selected.clear();
+    updateDeleteRow();
+    renderLibrary();
+  });
+});
+$('btnLibRefresh').addEventListener('click', refreshLibrary);
+setInterval(()=>{ if(getRelayUrl()) refreshLibrary(); }, 8000);
+
+$('sizeSelect').addEventListener('change', (e)=>{
+  state.size = parseInt(e.target.value,10);
+  if(state.sourceEl){
+    cache.srcPlanes = loadImageToSourcePlanes(state.sourceEl, state.size);
+    fullRecompute();
+  }
+});
+
+/* ============================== resizable panels ============================== */
+
+function makeColumnResizer(handle, targetEl, {min, max, invert}){
+  handle.addEventListener('pointerdown', (e)=>{
+    const startX = e.clientX;
+    const startWidth = targetEl.getBoundingClientRect().width;
+    handle.setPointerCapture(e.pointerId);
+    handle.classList.add('dragging');
+    function onMove(ev){
+      const dx = ev.clientX - startX;
+      const next = clamp(startWidth + (invert ? -dx : dx), min, max);
+      targetEl.style.flexBasis = next+'px';
+    }
+    function onUp(){
+      handle.classList.remove('dragging');
+      handle.removeEventListener('pointermove', onMove);
+      handle.removeEventListener('pointerup', onUp);
+    }
+    handle.addEventListener('pointermove', onMove);
+    handle.addEventListener('pointerup', onUp);
+  });
+}
+function makeRowResizer(handle, targetEl, {min, max, invert}){
+  handle.addEventListener('pointerdown', (e)=>{
+    const startY = e.clientY;
+    const startHeight = targetEl.getBoundingClientRect().height;
+    handle.setPointerCapture(e.pointerId);
+    handle.classList.add('dragging');
+    function onMove(ev){
+      const dy = ev.clientY - startY;
+      const next = clamp(startHeight + (invert ? -dy : dy), min, max);
+      targetEl.style.height = next+'px';
+    }
+    function onUp(){
+      handle.classList.remove('dragging');
+      handle.removeEventListener('pointermove', onMove);
+      handle.removeEventListener('pointerup', onUp);
+    }
+    handle.addEventListener('pointermove', onMove);
+    handle.addEventListener('pointerup', onUp);
+  });
+}
+
+makeColumnResizer($('resizeLeft'), document.querySelector('.left-col'), {min:200, max:480, invert:false});
+makeColumnResizer($('resizeRight'), $('rightCol'), {min:160, max:400, invert:true});
+makeRowResizer($('resizeBottom'), document.querySelector('.library-bar'), {min:120, max:window.innerHeight*0.8, invert:true});
+
+/* ============================== three.js preview ============================== */
+
+let renderer, scene, camera, mesh, hemiLight, dirLight, group;
+let textures = {};
+const previewState = { shape:'plane', tiles:1, orbit:false, dragging:false, lastX:0, lastY:0, yaw:0.35, pitch:-0.25, dist:3.1 };
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function initThree(){
+  const wrap = $('previewWrap') || document.getElementById('previewWrap');
+  const container = document.querySelector('.preview-canvas-wrap');
+  renderer = new THREE.WebGLRenderer({antialias:true});
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  container.appendChild(renderer.domElement);
+
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x08090a);
+  camera = new THREE.PerspectiveCamera(45,1,0.01,100);
+
+  hemiLight = new THREE.HemisphereLight(0xffffff, 0x222233, 1.0);
+  scene.add(hemiLight);
+  dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+  dirLight.position.set(2,3,2);
+  scene.add(dirLight);
+
+  group = new THREE.Group();
+  scene.add(group);
+
+  textures.map = new THREE.CanvasTexture(canvases.basecolor);
+  textures.map.encoding = THREE.sRGBEncoding;
+  textures.normalMap = new THREE.CanvasTexture(canvases.normal);
+  textures.roughnessMap = new THREE.CanvasTexture(canvases.roughness);
+  textures.aoMap = new THREE.CanvasTexture(canvases.ao);
+  textures.displacementMap = new THREE.CanvasTexture(canvases.height);
+  [textures.map,textures.normalMap,textures.roughnessMap,textures.aoMap,textures.displacementMap].forEach(t=>{
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  });
+
+  buildMesh();
+  resizeRenderer();
+  new ResizeObserver(resizeRenderer).observe(container);
+
+  container.addEventListener('pointerdown', (e)=>{
+    previewState.dragging = true;
+    previewState.lastX = e.clientX; previewState.lastY = e.clientY;
+    container.setPointerCapture(e.pointerId);
+  });
+  container.addEventListener('pointerup', (e)=>{ previewState.dragging=false; });
+  container.addEventListener('pointermove', (e)=>{
+    if(!previewState.dragging) return;
+    const dx = e.clientX-previewState.lastX, dy = e.clientY-previewState.lastY;
+    previewState.lastX=e.clientX; previewState.lastY=e.clientY;
+    previewState.yaw += dx*0.006;
+    previewState.pitch = clamp(previewState.pitch + dy*0.006, -1.3, 1.3);
+  });
+  container.addEventListener('wheel', (e)=>{
+    e.preventDefault();
+    previewState.dist = clamp(previewState.dist + e.deltaY*0.0015, 1.1, 6);
+  }, {passive:false});
+
+  requestAnimationFrame(animate);
+}
+
+function buildMesh(){
+  if(mesh){ group.remove(mesh); mesh.geometry.dispose(); mesh.material.dispose(); }
+  let geo;
+  if(previewState.shape==='plane'){
+    geo = new THREE.PlaneGeometry(1.6,1.6,256,256);
+  } else {
+    geo = new THREE.SphereGeometry(1,128,64);
+  }
+  geo.setAttribute('uv2', new THREE.BufferAttribute(geo.attributes.uv.array, 2));
+  const mat = new THREE.MeshStandardMaterial({
+    map: textures.map,
+    normalMap: textures.normalMap,
+    roughnessMap: textures.roughnessMap,
+    aoMap: textures.aoMap,
+    displacementMap: textures.displacementMap,
+    displacementScale: previewState.shape==='plane' ? 0.06 : 0.02,
+    metalness: state.metallic,
+    // The plane is a single-sided sheet by default — viewed from behind that means
+    // culled backfaces (nothing rendered, just gaps), not a real "back" of the material.
+    // Double-siding it renders the same maps from behind too, so full 360° rotation
+    // always shows something instead of a broken-looking hole.
+    side: previewState.shape==='plane' ? THREE.DoubleSide : THREE.FrontSide,
+  });
+  mesh = new THREE.Mesh(geo, mat);
+  group.add(mesh);
+  applyTileRepeat();
+}
+function applyTileRepeat(){
+  const t = previewState.tiles;
+  [textures.map,textures.normalMap,textures.roughnessMap,textures.aoMap,textures.displacementMap].forEach(tex=>{
+    tex.repeat.set(t,t);
+    tex.needsUpdate = true;
+  });
+}
+function updateThreeTextures(){
+  if(!textures.map) return;
+  Object.values(textures).forEach(t=> t.needsUpdate = true);
+}
+function updateMaterialScalar(){
+  if(mesh) mesh.material.metalness = state.metallic;
+}
+
+/* ============================== loaded 3D model preview (Snap3D) ============================== */
+// Plane/Sphere + tile controls only apply to the procedural PBR mesh built above — an
+// arbitrary loaded glTF has its own real geometry, so those controls are disabled while
+// a model is showing. Camera orbit/drag/zoom keeps working generically either way.
+
+let currentModelScene = null;
+let modelWireframeOn = false;
+const btnDownloadModelEl = $('btnDownloadModel');
+const modelWireToggleEl = $('modelWireToggle');
+const modelStatsEl = $('modelStats');
+const gltfLoader = new THREE.GLTFLoader();
+
+function setMaterialControlsEnabled(enabled){
+  document.querySelectorAll('#shapeToggle button, #tileToggle button').forEach(b=> b.disabled = !enabled);
+}
+
+// Triangle/vertex counts across every mesh in the loaded glTF — summed the same way the
+// bounding box below already walks the hierarchy, just counting geometry instead of extent.
+function computeModelStats(root){
+  let triangles = 0, vertices = 0;
+  root.traverse((obj)=>{
+    if(!obj.geometry) return;
+    const geo = obj.geometry;
+    vertices += geo.attributes.position ? geo.attributes.position.count : 0;
+    triangles += geo.index ? geo.index.count/3 : (geo.attributes.position ? geo.attributes.position.count/3 : 0);
+  });
+  return {triangles: Math.round(triangles), vertices};
+}
+
+function setModelWireframe(on){
+  modelWireframeOn = on;
+  if(currentModelScene){
+    currentModelScene.traverse((obj)=>{
+      if(!obj.material) return;
+      (Array.isArray(obj.material) ? obj.material : [obj.material]).forEach(m=> m.wireframe = on);
+    });
+  }
+  document.querySelectorAll('#modelWireToggle button').forEach(b=>
+    b.classList.toggle('active', (b.dataset.wire==='1') === on));
+}
+
+function clearModelFromPreview(){
+  if(!currentModelScene) return;
+  group.remove(currentModelScene);
+  currentModelScene.traverse((obj)=>{
+    if(obj.geometry) obj.geometry.dispose();
+    if(obj.material){
+      (Array.isArray(obj.material) ? obj.material : [obj.material]).forEach(m=>m.dispose());
+    }
+  });
+  currentModelScene = null;
+}
+
+// Called whenever a texture/image becomes the active preview (file load, code fetch,
+// library texture pick) — undoes whatever a previously-loaded model left behind.
+function exitModelPreview(){
+  clearModelFromPreview();
+  if(mesh) mesh.visible = true;
+  setMaterialControlsEnabled(true);
+  btnDownloadModelEl.classList.add('hidden');
+  btnDownloadModelEl.onclick = null;
+  btnExport.classList.remove('hidden');
+  modelWireToggleEl.classList.add('hidden');
+  modelStatsEl.classList.add('hidden');
+}
+
+function loadModelIntoPreview(item){
+  statusEl.textContent = 'Loading model…';
+  gltfLoader.load(
+    item.url,
+    (gltf)=>{
+      exitAiPreview();
+      clearModelFromPreview();
+      if(mesh) mesh.visible = false;
+      setMaterialControlsEnabled(false);
+
+      const root = gltf.scene;
+      const box = new THREE.Box3().setFromObject(root);
+      const size = new THREE.Vector3(); box.getSize(size);
+      const center = new THREE.Vector3(); box.getCenter(center);
+      const stats = computeModelStats(root);
+      root.position.sub(center);
+      const maxDim = Math.max(size.x, size.y, size.z) || 1;
+      root.scale.setScalar(1.4/maxDim);
+
+      group.add(root);
+      currentModelScene = root;
+      setModelWireframe(false);
+
+      materialMapsPanelEl.classList.add('hidden');
+      btnExport.classList.add('hidden');
+      btnDownloadModelEl.classList.remove('hidden');
+      btnDownloadModelEl.onclick = ()=>{
+        const a = document.createElement('a');
+        a.href = item.url;
+        a.download = (item.prompt || 'model').replace(/[^a-z0-9_\-]+/gi,'_') + '.glb';
+        document.body.appendChild(a); a.click(); a.remove();
+      };
+      modelWireToggleEl.classList.remove('hidden');
+      modelStatsEl.classList.remove('hidden');
+      modelStatsEl.textContent =
+        `${stats.triangles.toLocaleString()} tris · ${stats.vertices.toLocaleString()} verts · `+
+        `${size.x.toFixed(2)}×${size.y.toFixed(2)}×${size.z.toFixed(2)}m`;
+      statusEl.textContent = 'Model loaded';
+    },
+    undefined,
+    (err)=>{
+      console.error('[model] load failed', err);
+      statusEl.textContent = 'Model load failed';
+    }
+  );
+}
+
+/* ============================== AI Gen flat-image preview ============================== */
+// AI Gen images (GeminiTextureGenerate.ts, source:'ai' — see migration 0004_grab_source.sql)
+// go through the same `grabs` upload/list pipeline as pinch-captured photos, but deliberately
+// skip PBR-map derivation: shown as a flat, ready-to-download image instead of a material.
+const aiImagePreviewEl = $('aiImagePreview');
+const btnDownloadAiImageEl = $('btnDownloadAiImage');
+
+function exitAiPreview(){
+  aiImagePreviewEl.classList.add('hidden');
+  aiImagePreviewEl.src = '';
+  btnDownloadAiImageEl.classList.add('hidden');
+  btnDownloadAiImageEl.onclick = null;
+}
+
+function loadAiImageIntoPreview(item){
+  statusEl.textContent = 'Loading image…';
+  loadFullImage(item.code).then(img=>{
+    if(!img){ statusEl.textContent = 'Image load failed'; return; }
+    exitModelPreview();
+    if(mesh) mesh.visible = false;
+    setMaterialControlsEnabled(false);
+    emptyStateEl.classList.add('hidden');
+    materialMapsPanelEl.classList.add('hidden');
+    controlsEl.classList.add('hidden');
+    btnExport.classList.add('hidden');
+
+    // loadFullImage's <img> already IS a data:image/jpeg;base64,... URL — reusable as-is
+    // both for display and as the download link's href.
+    aiImagePreviewEl.src = img.src;
+    aiImagePreviewEl.classList.remove('hidden');
+    btnDownloadAiImageEl.classList.remove('hidden');
+    btnDownloadAiImageEl.onclick = ()=>{
+      const a = document.createElement('a');
+      a.href = img.src;
+      a.download = (item.prompt || 'ai-texture').replace(/[^a-z0-9_\-]+/gi,'_') + '.jpg';
+      document.body.appendChild(a); a.click(); a.remove();
+    };
+    statusEl.textContent = 'AI image loaded';
+  });
+}
+
+function resizeRenderer(){
+  const container = document.querySelector('.preview-canvas-wrap');
+  const w = container.clientWidth, h = container.clientHeight;
+  if(w===0||h===0) return;
+  renderer.setSize(w,h,false);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+  camera.aspect = w/h;
+  camera.updateProjectionMatrix();
+}
+
+function animate(){
+  requestAnimationFrame(animate);
+  if(previewState.orbit && !reducedMotion && !previewState.dragging){
+    previewState.yaw += 0.003;
+  }
+  const cy = Math.cos(previewState.pitch), sy = Math.sin(previewState.pitch);
+  const cx = Math.cos(previewState.yaw), sx = Math.sin(previewState.yaw);
+  camera.position.set(
+    previewState.dist*cy*sx,
+    previewState.dist*sy,
+    previewState.dist*cy*cx
+  );
+  camera.lookAt(0,0,0);
+  if(renderer) renderer.render(scene,camera);
+}
+
+document.querySelectorAll('#shapeToggle button').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('#shapeToggle button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    previewState.shape = btn.dataset.shape;
+    buildMesh();
+  });
+});
+document.querySelectorAll('#tileToggle button').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('#tileToggle button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    previewState.tiles = parseInt(btn.dataset.tile,10);
+    applyTileRepeat();
+  });
+});
+document.querySelectorAll('#orbitToggle button').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('#orbitToggle button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    previewState.orbit = btn.dataset.orbit==='1';
+  });
+});
+document.querySelectorAll('#modelWireToggle button').forEach(btn=>{
+  btn.addEventListener('click', ()=> setModelWireframe(btn.dataset.wire==='1'));
+});
+
+/* ============================== export ============================== */
+
+async function exportZip(){
+  const zip = new JSZip();
+  const name = sanitizedName();
+  const addPng = (canvas, suffix)=> new Promise(resolve=>{
+    canvas.toBlob(blob=>{ zip.file(`T_${name}_${suffix}.png`, blob); resolve(); }, 'image/png');
+  });
+  statusEl.textContent = 'Zipping…';
+  await Promise.all([
+    addPng(canvases.basecolor,'BaseColor'),
+    addPng(canvases.normal,'Normal'),
+    addPng(canvases.roughness,'Roughness'),
+    addPng(canvases.ao,'AmbientOcclusion'),
+    addPng(canvases.height,'Height'),
+  ]);
+  const materialJson = {
+    name,
+    workingSize: state.size,
+    source: state.sourceLabel,
+    createdAt: new Date().toISOString(),
+    settings: {
+      delightAmount: state.delightAmount,
+      exposure: state.exposure,
+      saturation: state.saturation,
+      seamlessMethod: state.seamlessMethod,
+      tileBand: state.tileBand,
+      heightGain: state.heightGain,
+      heightInvert: state.heightInvert,
+      normalStrength: state.normalStrength,
+      normalFlipGreen: state.normalFlipGreen,
+      aoStrength: state.aoStrength,
+      roughBase: state.roughBase,
+      roughDetail: state.roughDetail,
+      roughInvert: state.roughInvert,
+      metallic: state.metallic,
+    }
+  };
+  zip.file('material.json', JSON.stringify(materialJson,null,2));
+  zip.file('readme.txt',
+`Texture Grab export — ${name}
+Generated ${materialJson.createdAt}
+
+Blender Principled BSDF socket mapping:
+  T_${name}_BaseColor.png          -> Base Color            (sRGB / Color)
+  T_${name}_Normal.png             -> Normal Map node -> Normal input   (Non-Color)${state.normalFlipGreen ? '  [DirectX green, flip Y if your renderer expects OpenGL]' : '  [OpenGL green]'}
+  T_${name}_Roughness.png          -> Roughness             (Non-Color)
+  T_${name}_AmbientOcclusion.png   -> multiply into Base Color via a Mix Color (Multiply) node
+                                       (Principled BSDF has no direct AO socket)
+  T_${name}_Height.png             -> Displacement node -> Material Output "Displacement"
+                                       (or a Bump node -> Normal input for cheap relief)
+  Metallic                          -> flat value ${state.metallic.toFixed(2)}, set directly on the Principled BSDF "Metallic" input
+`);
+  const blob = await zip.generateAsync({type:'blob'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `${name}_textures.zip`; a.click();
+  setTimeout(()=>URL.revokeObjectURL(url), 8000);
+  statusEl.textContent = 'Exported.';
+}
+btnExport.addEventListener('click', exportZip);
+
+/* ============================== init ============================== */
+
+buildStrip();
+buildControls();
+initThree();
+refreshLibrary();
+
+})();
+</script>
+</body>
+</html>

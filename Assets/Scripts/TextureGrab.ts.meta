@@ -1,0 +1,74 @@
+- !<AssetImportMetadata/9f4e27ab-e5f4-43ab-8e52-08703a1e8987>
+  ImportedAssetIds:
+    TypeScriptAsset: !<reference> d113e96a-4191-4659-9383-fe939c82aece
+  ImporterName: TypeScriptAssetImporter
+  PrimaryAsset: !<reference> d113e96a-4191-4659-9383-fe939c82aece
+  PackageType: NotAPackage
+  LegacyPackagePolicy: ~
+  ExtraData:
+    {}
+  AssetDataMap:
+    TypeScriptAsset: !<own> 396e7689-94f1-44bc-81ac-e576ba66391d
+  DependentFiles:
+    []
+  ImporterSettings: !<AssetImporterSettings>
+    {}
+  CompressionSettings: !<own> 00000000-0000-0000-0000-000000000000
+- !<TypeScriptAssetData/396e7689-94f1-44bc-81ac-e576ba66391d>
+  SvgIcon: ""
+  SetupScript:
+    code: ""
+  Description: ""
+  VersionMajor: 0
+  VersionMinor: 0
+  VersionPatch: 0
+  ComponentUid: 7eb77544-374b-4ebd-834a-508b0403bed5
+  ExportUid: 00000000-0000-0000-0000-000000000000
+  PackagePolicy: CanBeUnpacked
+  ScriptInputsHidden:
+    cameraService: false
+    capturedPreviewImage: false
+    cardInteractable: false
+    cardManipulation: false
+    confirmButton: false
+    discardButton: false
+    loadingObject: false
+    previewImage: false
+    screenCropTexture: false
+    statusText: false
+    supabaseProject: false
+  ScriptTypesHidden:
+    {}
+  ReadMe: !<reference> 00000000-0000-0000-0000-000000000000
+  DeclarationFile: !<reference> 00000000-0000-0000-0000-000000000000
+  Tags:
+    []
+  Attachments:
+    []
+  DefaultScriptInputs:
+    - supabaseProject: !<reference.SupabaseProject> 00000000-0000-0000-0000-000000000000
+      statusText: !<reference.Text> 00000000-0000-0000-0000-000000000000
+      previewImage: !<reference.RenderMeshVisual> 00000000-0000-0000-0000-000000000000
+      capturedPreviewImage: !<reference.RenderMeshVisual> 00000000-0000-0000-0000-000000000000
+      cameraService: !<MappingBased.AssignableType> 00000000-0000-0000-0000-000000000000
+      screenCropTexture: !<reference.Texture> 00000000-0000-0000-0000-000000000000
+      confirmButton: !<MappingBased.AssignableType_1> 00000000-0000-0000-0000-000000000000
+      discardButton: !<MappingBased.AssignableType_2> 00000000-0000-0000-0000-000000000000
+      cardInteractable: !<MappingBased.AssignableType_3> 00000000-0000-0000-0000-000000000000
+      cardManipulation: !<MappingBased.AssignableType_4> 00000000-0000-0000-0000-000000000000
+      loadingObject: !<reference.SceneObject> 00000000-0000-0000-0000-000000000000
+  ScriptTypes:
+    -
+      {}
+  InputLines:
+    - // @input Asset.SupabaseProject supabaseProject
+    - // @input Component.Text statusText
+    - // @input Component.RenderMeshVisual previewImage
+    - // @input Component.RenderMeshVisual capturedPreviewImage
+    - // @input AssignableType cameraService
+    - // @input Asset.Texture screenCropTexture
+    - // @input AssignableType_1 confirmButton
+    - // @input AssignableType_2 discardButton
+    - // @input AssignableType_3 cardInteractable
+    - // @input AssignableType_4 cardManipulation
+    - // @input SceneObject loadingObject

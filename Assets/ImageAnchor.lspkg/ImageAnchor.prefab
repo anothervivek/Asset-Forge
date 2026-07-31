@@ -1,0 +1,82 @@
+- !<ObjectPrefab/29439e80-f880-4990-b8a2-9d7983356ab0>
+  PackagePath: ""
+  objects:
+    - !<own> bca780fd-7a08-4611-81c4-2d2396ff9077
+  LazyLoading: false
+  RetainAssets: true
+- !<RenderMeshVisual/429162fc-7939-4c62-80b8-0c03072e370e>
+  PrefabRemaps:
+    []
+  Name: Render Mesh Visual
+  Enabled: true
+  RenderOrder: 0
+  StretchMode: Stretch
+  VerticalAlignment: Center
+  HorizontalAlignment: Center
+  MeshShadowMode: None
+  ShadowColor: {x: 1.000000, y: 1.000000, z: 1.000000, w: 1.000000}
+  ShadowDensity: 1.000000
+  Materials:
+    - !<reference> 269c4b89-727f-4c97-a1e3-60ddea643014
+  Mesh: !<reference> 019dc018-cc9c-41d3-81d6-ee2c333b3ed1
+  Skin: !<reference> 00000000-0000-0000-0000-000000000000
+  BlendShapesEnabled: true
+  BlendNormals: false
+  BlendShapes:
+    {}
+- !<SceneObject/5aeef912-7374-49d4-8126-ffa0e7f596b7>
+  PrefabRemaps:
+    []
+  Name: CameraCrop
+  Enabled: true
+  Layers: 1
+  LocalTransform: !<TransformEntity>
+    Position: {x: -0.500000, y: 0.500000, z: 0.000000}
+    Rotation: {x: 0.000000, y: 0.000000, z: 0.000000}
+    Scale: {x: 1.000000, y: 1.000000, z: 1.000000}
+    HasSegmentScaleCompensation: false
+  Children:
+    []
+  Components:
+    - !<own> 429162fc-7939-4c62-80b8-0c03072e370e
+    - !<own> e629ebff-cf48-4341-8e84-e2c509d90009
+- !<SceneObject/bca780fd-7a08-4611-81c4-2d2396ff9077>
+  PrefabRemaps:
+    - 429162fc-7939-4c62-80b8-0c03072e370e: 429162fc-7939-4c62-7f47-f3fcf8d1c8f1
+    - 5aeef912-7374-49d4-8126-ffa0e7f596b7: 5aeef912-7374-49d4-7ed9-005f180a6948
+    - bca780fd-7a08-4611-81c4-2d2396ff9077: bca780fd-7a08-4611-7e3b-d2dc69006f88
+    - e629ebff-cf48-4341-8e84-e2c509d90009: e629ebff-cf48-4341-717b-1d3af626fff6
+  Name: ImageAnchor
+  Enabled: true
+  Layers: 1
+  LocalTransform: !<TransformEntity>
+    Position: {x: 6.650000, y: -5.000000, z: 0.000001}
+    Rotation: {x: 0.000000, y: 0.000000, z: 0.000000}
+    Scale: {x: 13.299999, y: 10.000000, z: 1.000000}
+    HasSegmentScaleCompensation: false
+  Children:
+    - !<own> 5aeef912-7374-49d4-8126-ffa0e7f596b7
+  Components:
+    []
+- !<ScriptComponent/e629ebff-cf48-4341-8e84-e2c509d90009>
+  PrefabRemaps:
+    []
+  Name: CropRegion
+  Enabled: true
+  ScriptAsset: !<reference> 2780cbc4-fc22-4209-a193-2e86cb12c031
+  ScriptInputsDefault:
+    {}
+  ScriptTypesDefault:
+    {}
+  ScriptInputs:
+    "":
+      cameraService: !<MappingBased.AssignableType> d852d808-b8c8-49b3-8c03-d6110d870730
+      screenCropTexture: !<reference.Texture> cd12b01a-61d6-4671-bba2-6c3bde1a9812
+      pointsToTrack: !<reference.SceneObject[]>
+        - !<reference> d87b8f5b-8492-451a-a2b4-016ba0ac815b
+        - !<reference> b930990a-525e-4f9f-973d-0f0a4a974cae
+        - !<reference> 32033dda-17a3-4e6b-a73a-39a8a2abf0da
+        - !<reference> 6efe5be6-1142-4602-ac4b-64c32adbfa82
+  ScriptTypes:
+    "":
+      {}

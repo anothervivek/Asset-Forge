@@ -1,0 +1,56 @@
+- !<AssetImportMetadata/5fed272d-60ca-cbb1-be3a-589c162f009c>
+  ImportedAssetIds:
+    ObjectPrefab: !<reference> 3a61e374-6b96-4685-be3b-ac6e62d2626a
+  ImporterName: ObjectPrefabImporter
+  PrimaryAsset: !<reference> 3a61e374-6b96-4685-be3b-ac6e62d2626a
+  PackageType: NotAPackage
+  LegacyPackagePolicy: ~
+  ExtraData:
+    {}
+  AssetDataMap:
+    ObjectPrefab: !<own> 35b43149-4b33-477e-843c-3ef30bac4957
+  DependentFiles:
+    []
+  ImporterSettings: !<AssetImporterSettings>
+    {}
+  CompressionSettings: !<own> 00000000-0000-0000-0000-000000000000
+- !<SceneObject/07b97111-5ab4-45ec-7765-9155f4dba67b>
+  PrefabRemaps:
+    []
+  Name: LoadingGif
+  Enabled: true
+  Layers: 1
+  LocalTransform: !<TransformEntity>
+    Position: {x: 0.000000, y: 0.000000, z: 0.100000}
+    Rotation: {x: 0.000000, y: 0.000000, z: 0.000000}
+    Scale: {x: 13.299999, y: 10.000000, z: 1.000000}
+    HasSegmentScaleCompensation: false
+  Children:
+    []
+  Components:
+    - !<own> f1b58c35-4920-44db-7c63-8406dfc7192b
+- !<ObjectPrefabAssetData/35b43149-4b33-477e-843c-3ef30bac4957>
+  Prototype: !<ObjectOwner/38b8e5eb-4f74-4adf-b43e-43fe4ebddaa9>
+    PackagePath: ""
+    objects:
+      - !<own> 07b97111-5ab4-45ec-7765-9155f4dba67b
+- !<RenderMeshVisual/f1b58c35-4920-44db-7c63-8406dfc7192b>
+  PrefabRemaps:
+    []
+  Name: Render Mesh Visual
+  Enabled: true
+  RenderOrder: 1
+  StretchMode: Stretch
+  VerticalAlignment: Center
+  HorizontalAlignment: Center
+  MeshShadowMode: None
+  ShadowColor: {x: 1.000000, y: 1.000000, z: 1.000000, w: 1.000000}
+  ShadowDensity: 1.000000
+  Materials:
+    - !<reference> d76ccc63-e031-494f-8237-a2577c0e92ba
+  Mesh: !<reference> fb0069aa-b5b9-403c-a20c-2a65cbefbf0f
+  Skin: !<reference> 00000000-0000-0000-0000-000000000000
+  BlendShapesEnabled: true
+  BlendNormals: false
+  BlendShapes:
+    {}

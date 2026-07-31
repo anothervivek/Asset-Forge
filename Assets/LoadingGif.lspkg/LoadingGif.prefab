@@ -1,0 +1,42 @@
+- !<ObjectPrefab/3a61e374-6b96-4685-be3b-ac6e62d2626a>
+  PackagePath: ""
+  objects:
+    - !<own> 07b97111-5ab4-45ec-889a-6eaa0b245984
+  LazyLoading: false
+  RetainAssets: true
+- !<SceneObject/07b97111-5ab4-45ec-889a-6eaa0b245984>
+  PrefabRemaps:
+    - 07b97111-5ab4-45ec-889a-6eaa0b245984: 07b97111-5ab4-45ec-7765-9155f4dba67b
+    - f1b58c35-4920-44db-839c-7bf92038e6d4: f1b58c35-4920-44db-7c63-8406dfc7192b
+  Name: LoadingGif
+  Enabled: true
+  Layers: 1
+  LocalTransform: !<TransformEntity>
+    Position: {x: 0.000000, y: 0.000000, z: 0.100000}
+    Rotation: {x: 0.000000, y: 0.000000, z: 0.000000}
+    Scale: {x: 13.299999, y: 10.000000, z: 1.000000}
+    HasSegmentScaleCompensation: false
+  Children:
+    []
+  Components:
+    - !<own> f1b58c35-4920-44db-839c-7bf92038e6d4
+- !<RenderMeshVisual/f1b58c35-4920-44db-839c-7bf92038e6d4>
+  PrefabRemaps:
+    []
+  Name: Render Mesh Visual
+  Enabled: true
+  RenderOrder: 1
+  StretchMode: Stretch
+  VerticalAlignment: Center
+  HorizontalAlignment: Center
+  MeshShadowMode: None
+  ShadowColor: {x: 1.000000, y: 1.000000, z: 1.000000, w: 1.000000}
+  ShadowDensity: 1.000000
+  Materials:
+    - !<reference> d76ccc63-e031-494f-8237-a2577c0e92ba
+  Mesh: !<reference> fb0069aa-b5b9-403c-a20c-2a65cbefbf0f
+  Skin: !<reference> 00000000-0000-0000-0000-000000000000
+  BlendShapesEnabled: true
+  BlendNormals: false
+  BlendShapes:
+    {}

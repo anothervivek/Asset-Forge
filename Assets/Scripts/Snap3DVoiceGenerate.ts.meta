@@ -1,0 +1,83 @@
+- !<AssetImportMetadata/29261f57-1d7b-4779-9a35-128de2707932>
+  ImportedAssetIds:
+    TypeScriptAsset: !<reference> 7acb5acd-6db4-43ab-8b98-61bd97a94d0f
+  ImporterName: TypeScriptAssetImporter
+  PrimaryAsset: !<reference> 7acb5acd-6db4-43ab-8b98-61bd97a94d0f
+  PackageType: NotAPackage
+  LegacyPackagePolicy: ~
+  ExtraData:
+    {}
+  AssetDataMap:
+    TypeScriptAsset: !<own> c16b3778-e4e2-4e0e-bd43-3e830af59c1a
+  DependentFiles:
+    []
+  ImporterSettings: !<AssetImporterSettings>
+    {}
+  CompressionSettings: !<own> 00000000-0000-0000-0000-000000000000
+- !<TypeScriptAssetData/c16b3778-e4e2-4e0e-bd43-3e830af59c1a>
+  SvgIcon: ""
+  SetupScript:
+    code: ""
+  Description: ""
+  VersionMajor: 0
+  VersionMinor: 0
+  VersionPatch: 0
+  ComponentUid: 8e480201-6b9a-4310-90cd-c7f59d7bd734
+  ExportUid: 00000000-0000-0000-0000-000000000000
+  PackagePolicy: CanBeUnpacked
+  ScriptInputsHidden:
+    activityRenderMesh: false
+    discardButton: false
+    generateButton: false
+    loadingObject: false
+    micButton: false
+    modelParent: false
+    previewMaterial: false
+    promptInput: false
+    pushButton: false
+    refineMesh: false
+    statusText: false
+    supabaseProject: false
+    titleScreen: false
+    useVertexColor: false
+  ScriptTypesHidden:
+    {}
+  ReadMe: !<reference> 00000000-0000-0000-0000-000000000000
+  DeclarationFile: !<reference> 00000000-0000-0000-0000-000000000000
+  Tags:
+    []
+  Attachments:
+    []
+  DefaultScriptInputs:
+    - supabaseProject: !<reference.SupabaseProject> 00000000-0000-0000-0000-000000000000
+      statusText: !<reference.Text> 00000000-0000-0000-0000-000000000000
+      micButton: !<MappingBased.AssignableType> 00000000-0000-0000-0000-000000000000
+      promptInput: !<MappingBased.AssignableType_1> 00000000-0000-0000-0000-000000000000
+      generateButton: !<MappingBased.AssignableType_2> 00000000-0000-0000-0000-000000000000
+      pushButton: !<MappingBased.AssignableType_3> 00000000-0000-0000-0000-000000000000
+      discardButton: !<MappingBased.AssignableType_4> 00000000-0000-0000-0000-000000000000
+      modelParent: !<reference.SceneObject> 00000000-0000-0000-0000-000000000000
+      previewMaterial: !<reference.Material> 00000000-0000-0000-0000-000000000000
+      loadingObject: !<reference.SceneObject> 00000000-0000-0000-0000-000000000000
+      activityRenderMesh: !<reference.RenderMeshVisual> 00000000-0000-0000-0000-000000000000
+      titleScreen: !<reference.SceneObject> 00000000-0000-0000-0000-000000000000
+      refineMesh: true
+      useVertexColor: false
+  ScriptTypes:
+    -
+      {}
+  InputLines:
+    - // @input Asset.SupabaseProject supabaseProject
+    - // @input Component.Text statusText
+    - // @input AssignableType micButton
+    - // @input AssignableType_1 promptInput
+    - // @input AssignableType_2 generateButton
+    - // @input AssignableType_3 pushButton
+    - // @input AssignableType_4 discardButton
+    - // @input SceneObject modelParent
+    - // @input Asset.Material previewMaterial
+    - // @input SceneObject loadingObject
+    - // @input Component.RenderMeshVisual activityRenderMesh
+    - // @input SceneObject titleScreen
+    - // @input bool refineMesh = true
+    - // @input bool useVertexColor
