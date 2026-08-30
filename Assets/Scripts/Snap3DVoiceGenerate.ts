@@ -7,10 +7,9 @@ import {Interactable} from "SpectaclesInteractionKit.lspkg/Components/Interactio
 import {InteractableManipulation} from "SpectaclesInteractionKit.lspkg/Components/Interaction/InteractableManipulation/InteractableManipulation"
 import {Snap3D} from "RemoteServiceGateway.lspkg/HostedSnap/Snap3D"
 import {Snap3DTypes} from "RemoteServiceGateway.lspkg/HostedSnap/Snap3DTypes"
+import {ASRQueryController} from "./ASRQueryController"
+import {getOrCreateDeviceId} from "./DeviceId"
 
-const SILENCE_TERMINATION_MS = 1200
-const LISTENING_TIMEOUT_SECONDS = 10
-const MIC_TAP_DEBOUNCE_SECONDS = 0.35
 const IDLE_STATUS_MESSAGE = "Tap the mic to speak, or type a prompt"
 const UPLOAD_CONFIRMATION_SECONDS = 2.5
 
@@ -18,7 +17,9 @@ const UPLOAD_CONFIRMATION_SECONDS = 2.5
 export class Snap3DVoiceGenerate extends BaseScriptComponent {
   @input supabaseProject!: SupabaseProject
   @input statusText!: Text
+  @input voiceController!: ASRQueryController
   @input micButton!: BaseButton
+  @input activityRenderMesh!: RenderMeshVisual
   @input promptInput!: TextInputField
   @input generateButton!: BaseButton
   @input pushButton!: BaseButton
@@ -26,20 +27,15 @@ export class Snap3DVoiceGenerate extends BaseScriptComponent {
   @input modelParent!: SceneObject
   @input previewMaterial!: Material
   @input loadingObject!: SceneObject
-  @input activityRenderMesh!: RenderMeshVisual
   @input titleScreen!: SceneObject
   @input refineMesh: boolean = true
   @input useVertexColor: boolean = false
 
   private supabase!: SupabaseClient
-  private asrModule: AsrModule = require("LensStudio:AsrModule")
-  private asrSettings: AsrModule.AsrTranscriptionOptions | null = null
   private camera = WorldCameraFinderProvider.getInstance()
   private activityMaterial!: Material
-  private isRecording = false
-  private lastMicTapTime = 0
+  private modeRoot: SceneObject | null = null
   private busy = false
-  private listeningTimeoutEvent: DelayedCallbackEvent | null = null
   private modelInteractable: Interactable | null = null
   private modelManipulation: InteractableManipulation | null = null
   private modelBeingManipulated = false
@@ -52,32 +48,48 @@ export class Snap3DVoiceGenerate extends BaseScriptComponent {
 
   onAwake() {
     this.supabase = createClient(this.supabaseProject.url, this.supabaseProject.publicToken)
+    this.modeRoot = this.getSceneObject().getParent()
 
     this.activityMaterial = this.activityRenderMesh.mainMaterial.clone()
     this.activityRenderMesh.clearMaterials()
     this.activityRenderMesh.mainMaterial = this.activityMaterial
     this.activityMaterial.mainPass.in_out = 0
 
-    this.asrSettings = AsrModule.AsrTranscriptionOptions.create()
-    this.asrSettings.mode = AsrModule.AsrMode.Balanced
-    this.asrSettings.silenceUntilTerminationMs = SILENCE_TERMINATION_MS
-    this.asrSettings.onTranscriptionUpdateEvent.add((asrOutput) => {
-      print("Snap3DVoiceGenerate AsrUpdate: text=" + asrOutput.text + ", isFinal=" + asrOutput.isFinal)
-      if (asrOutput.text !== undefined && asrOutput.text !== null) {
-        this.promptInput.text = asrOutput.text
-      }
-      if (!asrOutput.isFinal) {
-        this.startListeningTimeout()
+    this.voiceController.onListeningStarted.add(() => {
+      if (!this.isModeActive()) {
         return
       }
-      this.finishListening(null)
-      const text = asrOutput.text ? asrOutput.text.trim() : ""
-      this.setStatus(text ? "Tap Generate 3D when ready" : "Didn't catch that — tap the mic to retry")
+      this.clearPreview()
+      this.promptInput.text = ""
+      this.setStatus("Listening…")
+      this.animateActivityIndicator(true)
     })
-    this.asrSettings.onTranscriptionErrorEvent.add((errorCode) => {
-      print("Snap3DVoiceGenerate AsrError: errorCode=" + errorCode)
-      this.finishListening(null)
-      this.setStatus("Mic error — tap to retry: " + errorCode)
+    this.voiceController.onListeningStopped.add(() => {
+      if (!this.isModeActive()) {
+        return
+      }
+      this.setStatus(IDLE_STATUS_MESSAGE)
+      this.animateActivityIndicator(false)
+    })
+    this.voiceController.onPartialTranscript.add((text) => {
+      if (!this.isModeActive()) {
+        return
+      }
+      this.promptInput.text = text
+    })
+    this.voiceController.onFinalTranscript.add((text) => {
+      if (!this.isModeActive()) {
+        return
+      }
+      this.setStatus(text ? "Tap Generate 3D when ready" : "Didn't catch that, tap the mic to retry")
+    })
+    this.voiceController.onError.add((errorCode) => {
+      if (!this.isModeActive()) {
+        return
+      }
+      this.setStatus(
+        errorCode === "timeout" ? "Didn't catch that, tap the mic to retry" : "Mic error, tap to retry: " + errorCode
+      )
     })
 
     if (this.loadingObject) {
@@ -85,9 +97,7 @@ export class Snap3DVoiceGenerate extends BaseScriptComponent {
     }
 
     this.createEvent("OnDisableEvent").bind(() => {
-      if (this.isRecording) {
-        this.finishListening(null)
-      }
+      this.voiceController.cancelListening()
     })
 
     this.createEvent("OnStartEvent").bind(() => {
@@ -130,65 +140,15 @@ export class Snap3DVoiceGenerate extends BaseScriptComponent {
     this.setStatus(IDLE_STATUS_MESSAGE)
   }
 
+  private isModeActive(): boolean {
+    return this.modeRoot != null && this.modeRoot.enabled
+  }
+
   private onMicPressed = () => {
     if (this.busy || this.modelBeingManipulated) {
       return
     }
-    const now = getTime()
-    if (now - this.lastMicTapTime < MIC_TAP_DEBOUNCE_SECONDS) {
-      return
-    }
-    this.lastMicTapTime = now
-
-    if (this.isRecording) {
-      this.finishListening(IDLE_STATUS_MESSAGE)
-      return
-    }
-    this.clearPreview()
-    this.startListening()
-  }
-
-  private startListening() {
-    this.isRecording = true
-    this.promptInput.text = ""
-    this.setStatus("Listening…")
-    this.animateActivityIndicator(true)
-    this.startListeningTimeout()
-
-    if (this.asrSettings) {
-      this.asrModule.startTranscribing(this.asrSettings)
-    }
-  }
-
-  private startListeningTimeout() {
-    this.cancelListeningTimeout()
-    this.listeningTimeoutEvent = this.createEvent("DelayedCallbackEvent")
-    this.listeningTimeoutEvent.bind(() => {
-      this.listeningTimeoutEvent = null
-      if (!this.isRecording) {
-        return
-      }
-      print("Snap3DVoiceGenerate AsrTimeout: no final transcription after " + LISTENING_TIMEOUT_SECONDS + "s")
-      this.finishListening("Didn't catch that — tap the mic to retry")
-    })
-    this.listeningTimeoutEvent.reset(LISTENING_TIMEOUT_SECONDS)
-  }
-
-  private cancelListeningTimeout() {
-    if (this.listeningTimeoutEvent) {
-      this.listeningTimeoutEvent.cancel()
-      this.listeningTimeoutEvent = null
-    }
-  }
-
-  private finishListening(statusMessage: string | null) {
-    this.cancelListeningTimeout()
-    this.isRecording = false
-    this.animateActivityIndicator(false)
-    this.asrModule.stopTranscribing()
-    if (statusMessage !== null) {
-      this.setStatus(statusMessage)
-    }
+    this.voiceController.toggleListening()
   }
 
   private animateActivityIndicator(on: boolean) {
@@ -212,7 +172,7 @@ export class Snap3DVoiceGenerate extends BaseScriptComponent {
   }
 
   private onGeneratePressed = () => {
-    if (this.busy || this.isRecording || this.modelBeingManipulated) {
+    if (this.busy || this.voiceController.isRecording || this.modelBeingManipulated) {
       return
     }
     const prompt = this.promptInput.text.trim()
@@ -239,18 +199,26 @@ export class Snap3DVoiceGenerate extends BaseScriptComponent {
 
       await new Promise<void>((resolve, reject) => {
         submitGetStatus.event.add(([value, assetOrError]) => {
-          const isDone = value === "refined_mesh" || (value === "base_mesh" && !this.refineMesh)
-          if (isDone) {
-            this.showPreview(assetOrError as Snap3DTypes.GltfAssetData, prompt)
-            resolve()
-          } else if (value === "failed") {
+          if (value === "failed") {
             reject(new Error((assetOrError as Snap3DTypes.ErrorData).errorMsg))
+            return
           }
+          if (value === "image") {
+            this.setStatus("Building base mesh…")
+            return
+          }
+          if (value === "base_mesh" && this.refineMesh) {
+            this.setStatus("Refining mesh…")
+            return
+          }
+          // Either "refined_mesh", or "base_mesh" with refineMesh disabled - the final asset.
+          this.showPreview(assetOrError as Snap3DTypes.GltfAssetData, prompt)
+          resolve()
         })
       })
     } catch (error) {
       print("Snap3DVoiceGenerate error: " + error)
-      this.setStatus("Failed — tap Generate 3D to retry")
+      this.setStatus("Failed. Tap Generate 3D to retry")
     } finally {
       this.busy = false
       this.hideLoading()
@@ -360,7 +328,7 @@ export class Snap3DVoiceGenerate extends BaseScriptComponent {
     this.uploadModel(this.previewUrl, this.previewPrompt)
       .catch((error) => {
         print("Snap3DVoiceGenerate error: " + error)
-        this.setStatus("Failed — tap to retry")
+        this.setStatus("Failed. Tap to retry")
         this.setHasPreview(true)
       })
       .then(() => {
@@ -417,7 +385,9 @@ export class Snap3DVoiceGenerate extends BaseScriptComponent {
 
   private async uploadModel(url: string, prompt: string) {
     this.setStatus("Uploading model…")
-    const {data, error} = await this.supabase.functions.invoke("upload-model", {body: {url, prompt}})
+    const {data, error} = await this.supabase.functions.invoke("upload-model", {
+      body: {url, prompt, deviceId: getOrCreateDeviceId()},
+    })
 
     if (error || !data || !data.code) {
       throw new Error(error ? JSON.stringify(error) : "no code returned")

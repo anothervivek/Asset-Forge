@@ -28,6 +28,9 @@
   ScriptInputsHidden:
     aiGenModeButton: false
     aiGenModeRoot: false
+    codeModeButton: false
+    codeModeCloseButton: false
+    codeModeRoot: false
     modelModeButton: false
     modelModeRoot: false
     textureModeButton: false
@@ -46,9 +49,12 @@
       textureModeRoot: !<reference.SceneObject> 00000000-0000-0000-0000-000000000000
       modelModeRoot: !<reference.SceneObject> 00000000-0000-0000-0000-000000000000
       aiGenModeRoot: !<reference.SceneObject> 00000000-0000-0000-0000-000000000000
+      codeModeRoot: !<reference.SceneObject> 00000000-0000-0000-0000-000000000000
       textureModeButton: !<MappingBased.AssignableType> 00000000-0000-0000-0000-000000000000
       modelModeButton: !<MappingBased.AssignableType_1> 00000000-0000-0000-0000-000000000000
       aiGenModeButton: !<MappingBased.AssignableType_2> 00000000-0000-0000-0000-000000000000
+      codeModeButton: !<MappingBased.AssignableType_3> 00000000-0000-0000-0000-000000000000
+      codeModeCloseButton: !<MappingBased.AssignableType_4> 00000000-0000-0000-0000-000000000000
   ScriptTypes:
     -
       {}
@@ -57,6 +63,9 @@
     - // @input SceneObject textureModeRoot
     - // @input SceneObject modelModeRoot
     - // @input SceneObject aiGenModeRoot
+    - // @input SceneObject codeModeRoot
     - // @input AssignableType textureModeButton
     - // @input AssignableType_1 modelModeButton
     - // @input AssignableType_2 aiGenModeButton
+    - // @input AssignableType_3 codeModeButton
+    - // @input AssignableType_4 codeModeCloseButton

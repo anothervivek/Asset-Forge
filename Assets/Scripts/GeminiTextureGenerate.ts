@@ -4,36 +4,44 @@ import {TextInputField} from "SpectaclesUIKit.lspkg/Scripts/Components/TextInput
 import animate from "SpectaclesInteractionKit.lspkg/Utils/animate"
 import {Imagen} from "RemoteServiceGateway.lspkg/HostedExternal/Imagen"
 import {GoogleGenAITypes} from "RemoteServiceGateway.lspkg/HostedExternal/GoogleGenAITypes"
+import {OpenAI} from "RemoteServiceGateway.lspkg/HostedExternal/OpenAI"
+import {OpenAITypes} from "RemoteServiceGateway.lspkg/HostedExternal/OpenAITypes"
+import {Promisfy} from "RemoteServiceGateway.lspkg/Utils/Promisfy"
+import {ASRQueryController} from "./ASRQueryController"
+import {getOrCreateDeviceId} from "./DeviceId"
 
-const SILENCE_TERMINATION_MS = 1200
-const LISTENING_TIMEOUT_SECONDS = 10
-const MIC_TAP_DEBOUNCE_SECONDS = 0.35
 const IDLE_STATUS_MESSAGE = "Tap the mic to speak, or type a prompt"
 const UPLOAD_CONFIRMATION_SECONDS = 2.5
+// If this 404s with "not found or your project does not have access to it" for every
+// model id, the RSG "Google Token" credential (see RemoteServiceGatewayCredentials) does
+// not have Imagen access provisioned on Snap's side - it is not a wrong model name.
 const IMAGEN_MODEL = "imagen-3.0-generate-002"
+// OpenAI retired DALL-E (dall-e-2 and dall-e-3) on 2026-05-12; gpt-image-1 is its replacement
+// and only supports 1024x1024 / 1024x1536 / 1536x1024 / auto sizes, no response_format param.
+const OPENAI_IMAGE_MODEL: OpenAITypes.ImageGenerate.Model = "gpt-image-1"
+const OPENAI_IMAGE_SIZE = "1024x1024"
 
 @component
 export class GeminiTextureGenerate extends BaseScriptComponent {
   @input supabaseProject!: SupabaseProject
   @input statusText!: Text
+  @input voiceController!: ASRQueryController
   @input micButton!: BaseButton
+  @input activityRenderMesh!: RenderMeshVisual
   @input promptInput!: TextInputField
   @input generateButton!: BaseButton
   @input pushButton!: BaseButton
   @input discardButton!: BaseButton
   @input previewImage!: RenderMeshVisual
   @input loadingObject!: SceneObject
-  @input activityRenderMesh!: RenderMeshVisual
   @input titleScreen!: SceneObject
 
   private supabase!: SupabaseClient
-  private asrModule: AsrModule = require("LensStudio:AsrModule")
-  private asrSettings: AsrModule.AsrTranscriptionOptions | null = null
   private activityMaterial!: Material
-  private isRecording = false
-  private lastMicTapTime = 0
+  private internetModule = require("LensStudio:InternetModule") as InternetModule
+  private remoteMediaModule = require("LensStudio:RemoteMediaModule") as RemoteMediaModule
+  private modeRoot: SceneObject | null = null
   private busy = false
-  private listeningTimeoutEvent: DelayedCallbackEvent | null = null
 
   private previewTexture: Texture | null = null
   private previewPrompt: string | null = null
@@ -42,32 +50,48 @@ export class GeminiTextureGenerate extends BaseScriptComponent {
 
   onAwake() {
     this.supabase = createClient(this.supabaseProject.url, this.supabaseProject.publicToken)
+    this.modeRoot = this.getSceneObject().getParent()
 
     this.activityMaterial = this.activityRenderMesh.mainMaterial.clone()
     this.activityRenderMesh.clearMaterials()
     this.activityRenderMesh.mainMaterial = this.activityMaterial
     this.activityMaterial.mainPass.in_out = 0
 
-    this.asrSettings = AsrModule.AsrTranscriptionOptions.create()
-    this.asrSettings.mode = AsrModule.AsrMode.Balanced
-    this.asrSettings.silenceUntilTerminationMs = SILENCE_TERMINATION_MS
-    this.asrSettings.onTranscriptionUpdateEvent.add((asrOutput) => {
-      print("GeminiTextureGenerate AsrUpdate: text=" + asrOutput.text + ", isFinal=" + asrOutput.isFinal)
-      if (asrOutput.text !== undefined && asrOutput.text !== null) {
-        this.promptInput.text = asrOutput.text
-      }
-      if (!asrOutput.isFinal) {
-        this.startListeningTimeout()
+    this.voiceController.onListeningStarted.add(() => {
+      if (!this.isModeActive()) {
         return
       }
-      this.finishListening(null)
-      const text = asrOutput.text ? asrOutput.text.trim() : ""
-      this.setStatus(text ? "Tap Generate when ready" : "Didn't catch that — tap the mic to retry")
+      this.clearPreview()
+      this.promptInput.text = ""
+      this.setStatus("Listening…")
+      this.animateActivityIndicator(true)
     })
-    this.asrSettings.onTranscriptionErrorEvent.add((errorCode) => {
-      print("GeminiTextureGenerate AsrError: errorCode=" + errorCode)
-      this.finishListening(null)
-      this.setStatus("Mic error — tap to retry: " + errorCode)
+    this.voiceController.onListeningStopped.add(() => {
+      if (!this.isModeActive()) {
+        return
+      }
+      this.setStatus(IDLE_STATUS_MESSAGE)
+      this.animateActivityIndicator(false)
+    })
+    this.voiceController.onPartialTranscript.add((text) => {
+      if (!this.isModeActive()) {
+        return
+      }
+      this.promptInput.text = text
+    })
+    this.voiceController.onFinalTranscript.add((text) => {
+      if (!this.isModeActive()) {
+        return
+      }
+      this.setStatus(text ? "Tap Generate when ready" : "Didn't catch that, tap the mic to retry")
+    })
+    this.voiceController.onError.add((errorCode) => {
+      if (!this.isModeActive()) {
+        return
+      }
+      this.setStatus(
+        errorCode === "timeout" ? "Didn't catch that, tap the mic to retry" : "Mic error, tap to retry: " + errorCode
+      )
     })
 
     if (this.loadingObject) {
@@ -76,9 +100,7 @@ export class GeminiTextureGenerate extends BaseScriptComponent {
     this.previewImage.getSceneObject().enabled = false
 
     this.createEvent("OnDisableEvent").bind(() => {
-      if (this.isRecording) {
-        this.finishListening(null)
-      }
+      this.voiceController.cancelListening()
     })
 
     this.createEvent("OnStartEvent").bind(() => {
@@ -107,65 +129,15 @@ export class GeminiTextureGenerate extends BaseScriptComponent {
     this.setStatus(IDLE_STATUS_MESSAGE)
   }
 
+  private isModeActive(): boolean {
+    return this.modeRoot != null && this.modeRoot.enabled
+  }
+
   private onMicPressed = () => {
     if (this.busy) {
       return
     }
-    const now = getTime()
-    if (now - this.lastMicTapTime < MIC_TAP_DEBOUNCE_SECONDS) {
-      return
-    }
-    this.lastMicTapTime = now
-
-    if (this.isRecording) {
-      this.finishListening(IDLE_STATUS_MESSAGE)
-      return
-    }
-    this.clearPreview()
-    this.startListening()
-  }
-
-  private startListening() {
-    this.isRecording = true
-    this.promptInput.text = ""
-    this.setStatus("Listening…")
-    this.animateActivityIndicator(true)
-    this.startListeningTimeout()
-
-    if (this.asrSettings) {
-      this.asrModule.startTranscribing(this.asrSettings)
-    }
-  }
-
-  private startListeningTimeout() {
-    this.cancelListeningTimeout()
-    this.listeningTimeoutEvent = this.createEvent("DelayedCallbackEvent")
-    this.listeningTimeoutEvent.bind(() => {
-      this.listeningTimeoutEvent = null
-      if (!this.isRecording) {
-        return
-      }
-      print("GeminiTextureGenerate AsrTimeout: no final transcription after " + LISTENING_TIMEOUT_SECONDS + "s")
-      this.finishListening("Didn't catch that — tap the mic to retry")
-    })
-    this.listeningTimeoutEvent.reset(LISTENING_TIMEOUT_SECONDS)
-  }
-
-  private cancelListeningTimeout() {
-    if (this.listeningTimeoutEvent) {
-      this.listeningTimeoutEvent.cancel()
-      this.listeningTimeoutEvent = null
-    }
-  }
-
-  private finishListening(statusMessage: string | null) {
-    this.cancelListeningTimeout()
-    this.isRecording = false
-    this.animateActivityIndicator(false)
-    this.asrModule.stopTranscribing()
-    if (statusMessage !== null) {
-      this.setStatus(statusMessage)
-    }
+    this.voiceController.toggleListening()
   }
 
   private animateActivityIndicator(on: boolean) {
@@ -189,7 +161,7 @@ export class GeminiTextureGenerate extends BaseScriptComponent {
   }
 
   private onGeneratePressed = () => {
-    if (this.busy || this.isRecording) {
+    if (this.busy || this.voiceController.isRecording) {
       return
     }
     const prompt = this.promptInput.text.trim()
@@ -203,37 +175,70 @@ export class GeminiTextureGenerate extends BaseScriptComponent {
 
   private async generate(prompt: string) {
     this.busy = true
-    this.setStatus('Generating "' + prompt + '"…')
+    this.setStatus('Generating "' + prompt + '" with Imagen…')
     this.showLoading()
 
     try {
-      const request: GoogleGenAITypes.Imagen.ImagenRequest = {
-        model: IMAGEN_MODEL,
-        body: {
-          instances: [{prompt}],
-          parameters: {
-            sampleCount: 1,
-            addWatermark: false,
-            aspectRatio: "1:1",
-            enhancePrompt: true,
-            language: "en",
-          },
-        },
+      let texture: Texture
+      try {
+        texture = await this.generateWithImagen(prompt)
+      } catch (imagenError) {
+        print("GeminiTextureGenerate: Imagen failed, falling back to OpenAI image generation: " + imagenError)
+        this.setStatus('Imagen unavailable, trying OpenAI for "' + prompt + '"…')
+        texture = await this.generateWithOpenAIImage(prompt)
       }
-      const response = await Imagen.generateImage(request)
-      const prediction = response.predictions?.[0]
-      if (!prediction || !prediction.bytesBase64Encoded) {
-        throw new Error("Imagen didn't return an image — try rewording the prompt")
-      }
-      const texture = await this.decodeTexture(prediction.bytesBase64Encoded)
       this.showPreview(texture, prompt)
     } catch (error) {
       print("GeminiTextureGenerate error: " + error)
-      this.setStatus("Failed — tap Generate to retry")
+      this.setStatus("Failed. Tap Generate to retry")
     } finally {
       this.busy = false
       this.hideLoading()
     }
+  }
+
+  private async generateWithImagen(prompt: string): Promise<Texture> {
+    const request: GoogleGenAITypes.Imagen.ImagenRequest = {
+      model: IMAGEN_MODEL,
+      body: {
+        instances: [{prompt}],
+        parameters: {
+          sampleCount: 1,
+          addWatermark: false,
+          aspectRatio: "1:1",
+          enhancePrompt: true,
+          language: "en",
+        },
+      },
+    }
+    const response = await Imagen.generateImage(request)
+    const prediction = response.predictions?.[0]
+    if (!prediction || !prediction.bytesBase64Encoded) {
+      throw new Error("Imagen didn't return an image")
+    }
+    return this.decodeTexture(prediction.bytesBase64Encoded)
+  }
+
+  private async generateWithOpenAIImage(prompt: string): Promise<Texture> {
+    const request: OpenAITypes.ImageGenerate.Request = {
+      model: OPENAI_IMAGE_MODEL,
+      prompt,
+      n: 1,
+      size: OPENAI_IMAGE_SIZE,
+    }
+    const response = await OpenAI.imagesGenerate(request)
+    const image = response.data?.[0]
+    if (!image || (!image.b64_json && !image.url)) {
+      throw new Error("OpenAI didn't return an image. Try rewording the prompt")
+    }
+    if (image.b64_json) {
+      return this.decodeTexture(image.b64_json)
+    }
+    const httpRequest = RemoteServiceHttpRequest.create()
+    httpRequest.url = image.url!
+    const httpResponse = await Promisfy.InternetModule.performHttpRequest(this.internetModule, httpRequest)
+    const resource = httpResponse.asResource()
+    return Promisfy.RemoteMediaModule.loadResourceAsImageTexture(this.remoteMediaModule, resource)
   }
 
   private showLoading() {
@@ -333,7 +338,7 @@ export class GeminiTextureGenerate extends BaseScriptComponent {
     this.uploadPreview(this.previewTexture)
       .catch((error) => {
         print("GeminiTextureGenerate error: " + error)
-        this.setStatus("Failed — tap to retry")
+        this.setStatus("Failed. Tap to retry")
         this.setHasPreview(true)
       })
       .then(() => {
@@ -384,7 +389,7 @@ export class GeminiTextureGenerate extends BaseScriptComponent {
     this.setStatus("Uploading…")
     const image = await this.encodeTexture(texture)
     const {data, error} = await this.supabase.functions.invoke("upload", {
-      body: {image, t: getTime(), source: "ai", prompt},
+      body: {image, t: getTime(), source: "ai", prompt, deviceId: getOrCreateDeviceId()},
     })
 
     if (error || !data || !data.code) {

@@ -30,15 +30,20 @@ const MAX_IMAGE_BASE64_LENGTH = 12 * 1024 * 1024; // ~12MB body cap per spec
 const MIN_IMAGE_BASE64_LENGTH = 100; // guards against empty/near-empty payloads
 const MAX_PROMPT_LENGTH = 2000;
 
+const MAX_DEVICE_ID_LENGTH = 128;
+
 // `source`/`prompt` are optional and default to a pinch-captured photo's shape (source
 // "capture", no prompt) — TextureGrab.ts's existing upload calls never send either field
 // and keep working unchanged. GeminiTextureGenerate.ts sends source "ai" (and the prompt
 // that produced the image) so the web companion can skip PBR-map derivation for it and
 // show it as a flat, ready-to-download image instead — see migration 0004_grab_source.sql.
+// `deviceId` is stamped straight onto the row (see migration 0007_device_codes.sql) — no
+// lookup needed, the companion resolves its own device-code to a device_id separately
+// (see device-code Edge Function) and filters grabs/models by that same device_id.
 function validateImagePayload(
   body: unknown,
 ):
-  | { ok: true; image: string; source: "capture" | "ai"; prompt: string | null }
+  | { ok: true; image: string; source: "capture" | "ai"; prompt: string | null; deviceId: string | null }
   | { ok: false; status: number; error: string } {
   if (typeof body !== "object" || body === null || !("image" in body)) {
     return { ok: false, status: 400, error: "missing image" };
@@ -68,7 +73,16 @@ function validateImagePayload(
   }
   const prompt = typeof rawPrompt === "string" && rawPrompt.length > 0 ? rawPrompt : null;
 
-  return { ok: true, image, source, prompt };
+  const rawDeviceId = record.deviceId;
+  if (rawDeviceId !== undefined && typeof rawDeviceId !== "string") {
+    return { ok: false, status: 400, error: "invalid deviceId" };
+  }
+  if (typeof rawDeviceId === "string" && rawDeviceId.length > MAX_DEVICE_ID_LENGTH) {
+    return { ok: false, status: 400, error: "deviceId too long" };
+  }
+  const deviceId = typeof rawDeviceId === "string" && rawDeviceId.length > 0 ? rawDeviceId : null;
+
+  return { ok: true, image, source, prompt, deviceId };
 }
 
 const MAX_CODE_ATTEMPTS = 5;
@@ -95,9 +109,13 @@ Deno.serve(async (req) => {
   // Library mode: grabs persist until manually deleted, so there's no TTL/GC here anymore.
   for (let attempt = 0; attempt < MAX_CODE_ATTEMPTS; attempt++) {
     const code = generateCode();
-    const { error } = await supabase
-      .from("grabs")
-      .insert({ code, image: validated.image, source: validated.source, prompt: validated.prompt });
+    const { error } = await supabase.from("grabs").insert({
+      code,
+      image: validated.image,
+      source: validated.source,
+      prompt: validated.prompt,
+      device_id: validated.deviceId,
+    });
 
     if (!error) return json({ code });
     if (error.code !== "23505") { // not a unique-violation on `code` -> a real failure, stop retrying

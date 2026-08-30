@@ -7,6 +7,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
   :root{
     --bg:#0b0c0d;
@@ -1325,7 +1326,30 @@ $('btnCloseSettings').addEventListener('click', ()=> $('settingsPanel').classLis
 $('relayInput').addEventListener('change', (e)=>{
   setRelayUrl(e.target.value.trim());
   refreshLibrary();
+  startRealtime();
 });
+
+// Anon/public key — safe to ship client-side by design (role: "anon", scoped by RLS
+// server-side), same project the relay above already points at.
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd3Z2FndW1nYm5oemJ4b2ZnaGp5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ2MzMwMzAsImV4cCI6MjEwMDIwOTAzMH0.tSV1r7D4N5_tVw_FzDGVdZwieVhjI6jAE0CA9ZuWU5k';
+function getSupabaseUrl(){
+  return getRelayUrl().replace(/\/functions\/v1\/?$/, '');
+}
+// Pushes an instant refresh on new grabs/models rows (migration 0006_realtime.sql)
+// instead of waiting for the slow fallback poll below — if this never connects for
+// any reason, that poll still keeps the library eventually consistent on its own.
+let realtimeClient = null;
+let realtimeChannel = null;
+function startRealtime(){
+  if(realtimeChannel) realtimeClient.removeChannel(realtimeChannel);
+  realtimeClient = supabase.createClient(getSupabaseUrl(), SUPABASE_ANON_KEY);
+  realtimeChannel = realtimeClient
+    .channel('library-changes')
+    .on('postgres_changes', {event: 'INSERT', schema: 'public', table: 'grabs'}, refreshLibrary)
+    .on('postgres_changes', {event: 'INSERT', schema: 'public', table: 'models'}, refreshLibrary)
+    .subscribe();
+}
+startRealtime();
 
 $('btnFetchCode').addEventListener('click', async ()=>{
   const relay = getRelayUrl();
@@ -1671,7 +1695,10 @@ document.querySelectorAll('#libKindToggle button').forEach(btn=>{
   });
 });
 $('btnLibRefresh').addEventListener('click', refreshLibrary);
-setInterval(()=>{ if(getRelayUrl()) refreshLibrary(); }, 8000);
+// Realtime (above) handles instant updates now — this is just a safety-net fallback
+// in case that connection ever drops silently, so the library still stays eventually
+// consistent on its own.
+setInterval(()=>{ if(getRelayUrl()) refreshLibrary(); }, 60000);
 
 $('sizeSelect').addEventListener('change', (e)=>{
   state.size = parseInt(e.target.value,10);

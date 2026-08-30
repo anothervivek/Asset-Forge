@@ -35,11 +35,27 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
-  const { data, error } = await supabase
+  // Optional: see list/index.ts for why an absent ?code= keeps today's unscoped behavior.
+  const rawCode = reqUrl.searchParams.get("code");
+  let deviceId: string | null = null;
+  if (rawCode) {
+    const { data: deviceRow } = await supabase
+      .from("device_codes")
+      .select("device_id")
+      .eq("code", rawCode.toUpperCase())
+      .maybeSingle();
+    if (!deviceRow) return json({ error: "invalid code" }, 404);
+    deviceId = deviceRow.device_id;
+  }
+
+  let query = supabase
     .from("models")
     .select("code, prompt, storage_path, created_at")
     .order("created_at", { ascending: false })
     .limit(limit);
+  if (deviceId) query = query.eq("device_id", deviceId);
+
+  const { data, error } = await query;
 
   if (error) return json({ error: "list failed" }, 500);
 

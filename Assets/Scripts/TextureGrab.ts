@@ -5,6 +5,7 @@ import {InteractableManipulation} from "SpectaclesInteractionKit.lspkg/Component
 import {createClient, type SupabaseClient} from "SupabaseClient.lspkg/supabase-snapcloud"
 import {CameraService} from "ImageAnchor.lspkg/Scripts/CameraService"
 import {RectangleButton} from "SpectaclesUIKit.lspkg/Scripts/Components/Button/RectangleButton"
+import {getOrCreateDeviceId} from "./DeviceId"
 
 const MIN_FRAME_SIZE = 0.05
 const CROP_SETTLE_FRAMES = 2
@@ -253,7 +254,7 @@ export class TextureGrab extends BaseScriptComponent {
     this.lastCropRect = null
 
     if (!rect || rect.xMax - rect.xMin < MIN_FRAME_SIZE || rect.yMax - rect.yMin < MIN_FRAME_SIZE) {
-      this.setStatus("Too small — pinch both hands to retry")
+      this.setStatus("Too small, pinch both hands to retry")
       return
     }
     this.triggerCapture(rect)
@@ -269,7 +270,7 @@ export class TextureGrab extends BaseScriptComponent {
     this.captureAndReveal(cropRect)
       .catch((error) => {
         print("TextureGrab error: " + error)
-        this.setStatus("Failed — pinch to retry")
+        this.setStatus("Failed. Pinch to retry")
         this.hideLoading()
       })
       .then(() => {
@@ -397,7 +398,7 @@ export class TextureGrab extends BaseScriptComponent {
     this.uploadPending()
       .catch((error) => {
         print("TextureGrab error: " + error)
-        this.setStatus("Failed — pinch to retry")
+        this.setStatus("Failed. Pinch to retry")
         this.setPreviewButtonsVisible(true)
       })
       .then(() => {
@@ -415,7 +416,7 @@ export class TextureGrab extends BaseScriptComponent {
     const cropRect = this.pendingCropRect
 
     this.setStatus("Uploading…")
-    const body: Record<string, unknown> = {image, t: getTime()}
+    const body: Record<string, unknown> = {image, t: getTime(), deviceId: getOrCreateDeviceId()}
     if (cropRect) {
       body.crop = cropRect
     }

@@ -32,20 +32,30 @@ function generateCode(): string {
 }
 
 const MAX_PROMPT_LENGTH = 500;
+const MAX_DEVICE_ID_LENGTH = 128;
 function validateSubmission(
   body: unknown,
-): { ok: true; url: string; prompt: string } | { ok: false; status: number; error: string } {
+):
+  | { ok: true; url: string; prompt: string; deviceId: string | null }
+  | { ok: false; status: number; error: string } {
   if (typeof body !== "object" || body === null) {
     return { ok: false, status: 400, error: "missing body" };
   }
-  const { url, prompt } = body as Record<string, unknown>;
+  const { url, prompt, deviceId: rawDeviceId } = body as Record<string, unknown>;
   if (typeof url !== "string" || !/^https:\/\//.test(url)) {
     return { ok: false, status: 400, error: "missing or invalid url" };
   }
   if (typeof prompt !== "string" || prompt.length === 0 || prompt.length > MAX_PROMPT_LENGTH) {
     return { ok: false, status: 400, error: "missing or invalid prompt" };
   }
-  return { ok: true, url, prompt };
+  if (rawDeviceId !== undefined && typeof rawDeviceId !== "string") {
+    return { ok: false, status: 400, error: "invalid deviceId" };
+  }
+  if (typeof rawDeviceId === "string" && rawDeviceId.length > MAX_DEVICE_ID_LENGTH) {
+    return { ok: false, status: 400, error: "deviceId too long" };
+  }
+  const deviceId = typeof rawDeviceId === "string" && rawDeviceId.length > 0 ? rawDeviceId : null;
+  return { ok: true, url, prompt, deviceId };
 }
 
 const MAX_MODEL_BYTES = 60 * 1024 * 1024; // 60MB cap on the fetched .glb
@@ -92,7 +102,7 @@ Deno.serve(async (req) => {
 
     const { error: insertError } = await supabase
       .from("models")
-      .insert({ code, prompt: validated.prompt, storage_path: path });
+      .insert({ code, prompt: validated.prompt, storage_path: path, device_id: validated.deviceId });
 
     if (!insertError) return json({ code });
 

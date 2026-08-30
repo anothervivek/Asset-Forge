@@ -36,15 +36,34 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
+  // Optional: a caller passing ?code=XXXXXX (My Website's Asset Forge Companion, once
+  // that device's code has been entered) gets only that device's own items. No code at
+  // all — the existing web/index.html companion — keeps its original unscoped behavior
+  // exactly as before migration 0007_device_codes.sql.
+  const rawCode = url.searchParams.get("code");
+  let deviceId: string | null = null;
+  if (rawCode) {
+    const { data: deviceRow } = await supabase
+      .from("device_codes")
+      .select("device_id")
+      .eq("code", rawCode.toUpperCase())
+      .maybeSingle();
+    if (!deviceRow) return json({ error: "invalid code" }, 404);
+    deviceId = deviceRow.device_id;
+  }
+
   // No image payload here on purpose — this powers the gallery list, thumbnails are
   // fetched lazily per-item via the existing /grab/CODE endpoint. `source`/`prompt` (see
   // migration 0004_grab_source.sql) let the web companion tell an AI Gen image apart from
   // a pinch-captured one and skip PBR-map derivation for it.
-  const { data, error } = await supabase
+  let query = supabase
     .from("grabs")
     .select("code, created_at, source, prompt")
     .order("created_at", { ascending: false })
     .limit(limit);
+  if (deviceId) query = query.eq("device_id", deviceId);
+
+  const { data, error } = await query;
 
   if (error) return json({ error: "list failed" }, 500);
 

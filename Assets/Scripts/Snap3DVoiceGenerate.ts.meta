@@ -40,6 +40,7 @@
     supabaseProject: false
     titleScreen: false
     useVertexColor: false
+    voiceController: false
   ScriptTypesHidden:
     {}
   ReadMe: !<reference> 00000000-0000-0000-0000-000000000000
@@ -51,15 +52,16 @@
   DefaultScriptInputs:
     - supabaseProject: !<reference.SupabaseProject> 00000000-0000-0000-0000-000000000000
       statusText: !<reference.Text> 00000000-0000-0000-0000-000000000000
-      micButton: !<MappingBased.AssignableType> 00000000-0000-0000-0000-000000000000
-      promptInput: !<MappingBased.AssignableType_1> 00000000-0000-0000-0000-000000000000
-      generateButton: !<MappingBased.AssignableType_2> 00000000-0000-0000-0000-000000000000
-      pushButton: !<MappingBased.AssignableType_3> 00000000-0000-0000-0000-000000000000
-      discardButton: !<MappingBased.AssignableType_4> 00000000-0000-0000-0000-000000000000
+      voiceController: !<MappingBased.AssignableType> 00000000-0000-0000-0000-000000000000
+      micButton: !<MappingBased.AssignableType_1> 00000000-0000-0000-0000-000000000000
+      activityRenderMesh: !<reference.RenderMeshVisual> 00000000-0000-0000-0000-000000000000
+      promptInput: !<MappingBased.AssignableType_2> 00000000-0000-0000-0000-000000000000
+      generateButton: !<MappingBased.AssignableType_3> 00000000-0000-0000-0000-000000000000
+      pushButton: !<MappingBased.AssignableType_4> 00000000-0000-0000-0000-000000000000
+      discardButton: !<MappingBased.AssignableType_5> 00000000-0000-0000-0000-000000000000
       modelParent: !<reference.SceneObject> 00000000-0000-0000-0000-000000000000
       previewMaterial: !<reference.Material> 00000000-0000-0000-0000-000000000000
       loadingObject: !<reference.SceneObject> 00000000-0000-0000-0000-000000000000
-      activityRenderMesh: !<reference.RenderMeshVisual> 00000000-0000-0000-0000-000000000000
       titleScreen: !<reference.SceneObject> 00000000-0000-0000-0000-000000000000
       refineMesh: true
       useVertexColor: false
@@ -69,15 +71,16 @@
   InputLines:
     - // @input Asset.SupabaseProject supabaseProject
     - // @input Component.Text statusText
-    - // @input AssignableType micButton
-    - // @input AssignableType_1 promptInput
-    - // @input AssignableType_2 generateButton
-    - // @input AssignableType_3 pushButton
-    - // @input AssignableType_4 discardButton
+    - // @input AssignableType voiceController
+    - // @input AssignableType_1 micButton
+    - // @input Component.RenderMeshVisual activityRenderMesh
+    - // @input AssignableType_2 promptInput
+    - // @input AssignableType_3 generateButton
+    - // @input AssignableType_4 pushButton
+    - // @input AssignableType_5 discardButton
     - // @input SceneObject modelParent
     - // @input Asset.Material previewMaterial
     - // @input SceneObject loadingObject
-    - // @input Component.RenderMeshVisual activityRenderMesh
     - // @input SceneObject titleScreen
     - // @input bool refineMesh = true
     - // @input bool useVertexColor

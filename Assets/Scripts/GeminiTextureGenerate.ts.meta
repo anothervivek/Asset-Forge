@@ -1,20 +1,20 @@
-- !<AssetImportMetadata/09f28f96-207e-475d-85e3-bb308e05502b>
+- !<AssetImportMetadata/d94762e6-191c-4fd1-aaea-6500ea042837>
   ImportedAssetIds:
-    TypeScriptAsset: !<reference> 4f1f33d6-8550-482a-858f-76d9b975384f
+    TypeScriptAsset: !<reference> 3bfd05dc-99f3-4dd4-9c3c-6336e5e14815
   ImporterName: TypeScriptAssetImporter
-  PrimaryAsset: !<reference> 4f1f33d6-8550-482a-858f-76d9b975384f
+  PrimaryAsset: !<reference> 3bfd05dc-99f3-4dd4-9c3c-6336e5e14815
   PackageType: NotAPackage
   LegacyPackagePolicy: ~
   ExtraData:
     {}
   AssetDataMap:
-    TypeScriptAsset: !<own> 2cf58148-da6a-487f-8c5d-9a6f22576218
+    TypeScriptAsset: !<own> bcdef113-4797-4609-8cf7-20e110292c30
   DependentFiles:
     []
   ImporterSettings: !<AssetImporterSettings>
     {}
   CompressionSettings: !<own> 00000000-0000-0000-0000-000000000000
-- !<TypeScriptAssetData/2cf58148-da6a-487f-8c5d-9a6f22576218>
+- !<TypeScriptAssetData/bcdef113-4797-4609-8cf7-20e110292c30>
   SvgIcon: ""
   SetupScript:
     code: ""
@@ -22,7 +22,7 @@
   VersionMajor: 0
   VersionMinor: 0
   VersionPatch: 0
-  ComponentUid: 63bca5a0-04cf-4f76-8eb7-5cac236bdadc
+  ComponentUid: ce6c14a2-6f02-4e5b-b3ed-0768c0095a46
   ExportUid: 00000000-0000-0000-0000-000000000000
   PackagePolicy: CanBeUnpacked
   ScriptInputsHidden:
@@ -37,6 +37,7 @@
     statusText: false
     supabaseProject: false
     titleScreen: false
+    voiceController: false
   ScriptTypesHidden:
     {}
   ReadMe: !<reference> 00000000-0000-0000-0000-000000000000
@@ -48,14 +49,15 @@
   DefaultScriptInputs:
     - supabaseProject: !<reference.SupabaseProject> 00000000-0000-0000-0000-000000000000
       statusText: !<reference.Text> 00000000-0000-0000-0000-000000000000
-      micButton: !<MappingBased.AssignableType> 00000000-0000-0000-0000-000000000000
-      promptInput: !<MappingBased.AssignableType_1> 00000000-0000-0000-0000-000000000000
-      generateButton: !<MappingBased.AssignableType_2> 00000000-0000-0000-0000-000000000000
-      pushButton: !<MappingBased.AssignableType_3> 00000000-0000-0000-0000-000000000000
-      discardButton: !<MappingBased.AssignableType_4> 00000000-0000-0000-0000-000000000000
+      voiceController: !<MappingBased.AssignableType> 00000000-0000-0000-0000-000000000000
+      micButton: !<MappingBased.AssignableType_1> 00000000-0000-0000-0000-000000000000
+      activityRenderMesh: !<reference.RenderMeshVisual> 00000000-0000-0000-0000-000000000000
+      promptInput: !<MappingBased.AssignableType_2> 00000000-0000-0000-0000-000000000000
+      generateButton: !<MappingBased.AssignableType_3> 00000000-0000-0000-0000-000000000000
+      pushButton: !<MappingBased.AssignableType_4> 00000000-0000-0000-0000-000000000000
+      discardButton: !<MappingBased.AssignableType_5> 00000000-0000-0000-0000-000000000000
       previewImage: !<reference.RenderMeshVisual> 00000000-0000-0000-0000-000000000000
       loadingObject: !<reference.SceneObject> 00000000-0000-0000-0000-000000000000
-      activityRenderMesh: !<reference.RenderMeshVisual> 00000000-0000-0000-0000-000000000000
       titleScreen: !<reference.SceneObject> 00000000-0000-0000-0000-000000000000
   ScriptTypes:
     -
@@ -63,12 +65,13 @@
   InputLines:
     - // @input Asset.SupabaseProject supabaseProject
     - // @input Component.Text statusText
-    - // @input AssignableType micButton
-    - // @input AssignableType_1 promptInput
-    - // @input AssignableType_2 generateButton
-    - // @input AssignableType_3 pushButton
-    - // @input AssignableType_4 discardButton
+    - // @input AssignableType voiceController
+    - // @input AssignableType_1 micButton
+    - // @input Component.RenderMeshVisual activityRenderMesh
+    - // @input AssignableType_2 promptInput
+    - // @input AssignableType_3 generateButton
+    - // @input AssignableType_4 pushButton
+    - // @input AssignableType_5 discardButton
     - // @input Component.RenderMeshVisual previewImage
     - // @input SceneObject loadingObject
-    - // @input Component.RenderMeshVisual activityRenderMesh
     - // @input SceneObject titleScreen

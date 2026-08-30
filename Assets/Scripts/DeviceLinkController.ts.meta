@@ -1,0 +1,50 @@
+- !<AssetImportMetadata/33393d54-78a6-4aad-9e9d-9f7b7fa85c5b>
+  ImportedAssetIds:
+    TypeScriptAsset: !<reference> 7b6c17d1-663e-4600-a0cd-e9127aaeeac8
+  ImporterName: TypeScriptAssetImporter
+  PrimaryAsset: !<reference> 7b6c17d1-663e-4600-a0cd-e9127aaeeac8
+  PackageType: NotAPackage
+  LegacyPackagePolicy: ~
+  ExtraData:
+    {}
+  AssetDataMap:
+    TypeScriptAsset: !<own> 222f8ace-5b26-40d2-9ff8-605c488e3708
+  DependentFiles:
+    []
+  ImporterSettings: !<AssetImporterSettings>
+    {}
+  CompressionSettings: !<own> 00000000-0000-0000-0000-000000000000
+- !<TypeScriptAssetData/222f8ace-5b26-40d2-9ff8-605c488e3708>
+  SvgIcon: ""
+  SetupScript:
+    code: ""
+  Description: ""
+  VersionMajor: 0
+  VersionMinor: 0
+  VersionPatch: 0
+  ComponentUid: 3867a8d6-a419-43ca-9111-161233687fce
+  ExportUid: 00000000-0000-0000-0000-000000000000
+  PackagePolicy: CanBeUnpacked
+  ScriptInputsHidden:
+    codeText: false
+    retryButton: false
+    supabaseProject: false
+  ScriptTypesHidden:
+    {}
+  ReadMe: !<reference> 00000000-0000-0000-0000-000000000000
+  DeclarationFile: !<reference> 00000000-0000-0000-0000-000000000000
+  Tags:
+    []
+  Attachments:
+    []
+  DefaultScriptInputs:
+    - supabaseProject: !<reference.SupabaseProject> 00000000-0000-0000-0000-000000000000
+      codeText: !<reference.Text> 00000000-0000-0000-0000-000000000000
+      retryButton: !<MappingBased.AssignableType> 00000000-0000-0000-0000-000000000000
+  ScriptTypes:
+    -
+      {}
+  InputLines:
+    - // @input Asset.SupabaseProject supabaseProject
+    - // @input Component.Text codeText
+    - // @input AssignableType retryButton
