@@ -6,10 +6,12 @@ Asset Forge is a Snap Spectacles Lens for building a personal library of PBR tex
 
 No account signup on-device — each headset gets a persistent, human-readable device code that links its library to the web companion.
 
+**Live web companion:** [anothervivek.com/tools/asset-forge](https://anothervivek.com/tools/asset-forge)
+
 ## What It Feels Like
 
 ```txt
-open the Lens, pick a mode from the radial menu
+open the Lens, pick a mode from the dock menu
 Texture Grab  -> pinch both hands, frame a real surface, release to capture
 AI Gen        -> tap the mic (or type) a prompt -> Gemini/OpenAI paints a texture
 Model Gen     -> tap the mic (or type) a prompt -> Snap3D sculpts a mesh in-world
@@ -28,7 +30,7 @@ Every mode shares one upload pipeline: capture or generate on-device, preview it
 | AI Texture Gen | Voice (shared ASR session) or typed prompt, Gemini `gemini-2.5-flash-image` primary, OpenAI `gpt-image-1` automatic fallback |
 | Model Gen | Voice or typed prompt, Snap3D base + refined mesh stages, in-world preview before confirming, Push/Discard buttons |
 | Device Linking | Persistent per-device code (idempotent, generated once), auto-surfaced on first-ever Lens launch |
-| Mode Menu | Radial-style menu toggling Texture/Model/AI-Gen/Code roots; modes keep running in the background when hidden |
+| Mode Menu | Dock menu toggling Texture/Model/AI-Gen/Code roots; modes keep running in the background when hidden |
 | Web Companion | Single-file gallery (grid + radial carousel), realtime auto-refresh, device-code-scoped library |
 | Texture Pipeline | De-lit, tiled (wrap + feather), and mapped (5 PBR maps) processing entirely client-side in the browser |
 | Model Pipeline | glTF preview via three.js, `.glb` download |
@@ -46,7 +48,7 @@ Not yet implemented:
 ```mermaid
 flowchart LR
   subgraph Lens["Spectacles Lens"]
-    A[Radial Mode Menu] --> B[Texture Grab]
+    A[Dock Mode Menu] --> B[Texture Grab]
     A --> C[AI Texture Gen]
     A --> D[Model Gen]
     A --> E[Device Link / Code]
@@ -82,7 +84,7 @@ Asset Forge/
 │   │   ├── TextureGrab.ts              pinch-frame-capture mode
 │   │   ├── GeminiTextureGenerate.ts     voice/text -> AI texture mode
 │   │   ├── Snap3DVoiceGenerate.ts       voice/text -> AI 3D model mode
-│   │   ├── LensModeSelect.ts            radial mode menu / mode-root toggling
+│   │   ├── LensModeSelect.ts            dock mode menu / mode-root toggling
 │   │   ├── DeviceLinkController.ts      device-code display + retry
 │   │   ├── ASRQueryController.ts        shared speech-to-text session
 │   │   ├── DeviceId.ts                  persistent per-device id
@@ -124,6 +126,8 @@ Asset Forge/
 
 `web/index.html` is a single self-contained file (three.js, JSZip, and the Supabase JS client loaded from CDN, no build step). Deploy it anywhere that serves static files — drag-and-drop onto a static host works fine. Update the Supabase URL/anon key constants at the top of the file to match your project.
 
+The live instance for this project is hosted at [anothervivek.com/tools/asset-forge](https://anothervivek.com/tools/asset-forge).
+
 ### 4. Link a Device
 
 On first launch, the Lens's Code mode opens automatically with your device's link code. Enter that code on the web companion to scope the gallery to that device.
@@ -140,6 +144,7 @@ Each Supabase Edge Function under `supabase/functions/` carries a header comment
 Asset Forge is a personal-scale prototype, not a production pipeline. A few real constraints worth knowing before you build on it:
 
 - `CameraModule.requestImage()` (the high-res still capture Texture Grab uses) is device-only — it does nothing in the Lens Studio editor/preview.
+- Texture Grab's capture can intermittently fail to acquire the camera at the moment of snapping (`requestImage()` is rejected, so the frame is never grabbed) — a Spectacles camera-arbitration limitation that shows up around mode switches and isn't fully resolved yet. Pinch to retry if a capture comes back empty.
 - ASR (speech-to-text) and the camera are both "sensitive sensor" APIs on Spectacles and cannot be active at the same time — Texture Grab suspends the shared voice session while it's the active mode.
 - Snap Cloud provisions Supabase projects on a `snapcloud.dev` gateway domain, not the usual `supabase.co` one, and the standard Supabase CLI can't manage a Snap Cloud project directly — schema and function changes go through the dashboard.
 - The `seamless-gemini` function uses a separate, plain Google AI Studio API key (its own secret), distinct from the Snap-hosted Gemini access the Lens itself uses via `RemoteServiceGateway.lspkg`.
