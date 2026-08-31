@@ -9,9 +9,18 @@ import {Snap3D} from "RemoteServiceGateway.lspkg/HostedSnap/Snap3D"
 import {Snap3DTypes} from "RemoteServiceGateway.lspkg/HostedSnap/Snap3DTypes"
 import {ASRQueryController} from "./ASRQueryController"
 import {getOrCreateDeviceId} from "./DeviceId"
+import {startFlavorRotation} from "./FlavorTextRotator"
 
 const IDLE_STATUS_MESSAGE = "Tap the mic to speak, or type a prompt"
 const UPLOAD_CONFIRMATION_SECONDS = 2.5
+const MODEL_FLAVOR_WORDS = [
+  "Forging your model…",
+  "Sculpting geometry…",
+  "Assembling polygons…",
+  "Dreaming in 3D…",
+  "Shaping form…",
+  "Synthesizing…",
+]
 
 @component
 export class Snap3DVoiceGenerate extends BaseScriptComponent {
@@ -43,6 +52,10 @@ export class Snap3DVoiceGenerate extends BaseScriptComponent {
   private previewObj: SceneObject | null = null
   private previewUrl: string | null = null
   private previewPrompt: string | null = null
+  // A generation that finished while this mode was switched away - instantiating the
+  // model into modelParent isn't safe while its hierarchy is inactive, so hold onto it
+  // and show it once the mode is re-enabled instead of losing it.
+  private pendingResult: {gltfData: Snap3DTypes.GltfAssetData; prompt: string} | null = null
 
   private statusRevertEvent: DelayedCallbackEvent | null = null
 
@@ -97,7 +110,18 @@ export class Snap3DVoiceGenerate extends BaseScriptComponent {
     }
 
     this.createEvent("OnDisableEvent").bind(() => {
+      // Only stop the mic - never clear busy/preview state here. Switching modes
+      // must not cancel an in-flight generation or discard an unconfirmed result;
+      // both need to survive in the background until the user pushes or discards.
       this.voiceController.cancelListening()
+    })
+
+    this.createEvent("OnEnableEvent").bind(() => {
+      if (this.pendingResult) {
+        const {gltfData, prompt} = this.pendingResult
+        this.pendingResult = null
+        this.showPreview(gltfData, prompt)
+      }
     })
 
     this.createEvent("OnStartEvent").bind(() => {
@@ -186,8 +210,11 @@ export class Snap3DVoiceGenerate extends BaseScriptComponent {
 
   private async generate(prompt: string) {
     this.busy = true
-    this.setStatus('Generating "' + prompt + '"…')
+    this.setStatus("Forging your model…")
     this.showLoading()
+    // Restarted around every real stage message below, so flavor text fills the gaps
+    // between milestones instead of overriding them.
+    let stopFlavor = startFlavorRotation(this, MODEL_FLAVOR_WORDS, (word) => this.setStatus(word))
 
     try {
       const submitGetStatus = await Snap3D.submitAndGetStatus({
@@ -204,15 +231,27 @@ export class Snap3DVoiceGenerate extends BaseScriptComponent {
             return
           }
           if (value === "image") {
+            stopFlavor()
             this.setStatus("Building base mesh…")
+            stopFlavor = startFlavorRotation(this, MODEL_FLAVOR_WORDS, (word) => this.setStatus(word))
             return
           }
           if (value === "base_mesh" && this.refineMesh) {
+            stopFlavor()
             this.setStatus("Refining mesh…")
+            stopFlavor = startFlavorRotation(this, MODEL_FLAVOR_WORDS, (word) => this.setStatus(word))
             return
           }
           // Either "refined_mesh", or "base_mesh" with refineMesh disabled - the final asset.
-          this.showPreview(assetOrError as Snap3DTypes.GltfAssetData, prompt)
+          stopFlavor()
+          const gltfData = assetOrError as Snap3DTypes.GltfAssetData
+          if (this.isModeActive()) {
+            this.showPreview(gltfData, prompt)
+          } else {
+            // Instantiating into modelParent isn't safe while this mode is hidden -
+            // hold the result and show it once the mode is re-enabled (OnEnableEvent).
+            this.pendingResult = {gltfData, prompt}
+          }
           resolve()
         })
       })
@@ -220,6 +259,7 @@ export class Snap3DVoiceGenerate extends BaseScriptComponent {
       print("Snap3DVoiceGenerate error: " + error)
       this.setStatus("Failed. Tap Generate 3D to retry")
     } finally {
+      stopFlavor()
       this.busy = false
       this.hideLoading()
     }
@@ -300,22 +340,34 @@ export class Snap3DVoiceGenerate extends BaseScriptComponent {
   }
 
   private showPreview(gltfData: Snap3DTypes.GltfAssetData, prompt: string) {
-    this.hideLoading()
-    this.clearPreview()
-    const settings = GltfSettings.create()
-    settings.convertMetersToCentimeters = true
-    this.previewObj = gltfData.gltfAsset.tryInstantiateWithSetting(this.modelParent, this.previewMaterial, settings)
-    this.previewObj.getTransform().setWorldPosition(this.modelParent.getTransform().getWorldPosition())
-    this.previewObj.getTransform().setWorldRotation(quat.lookAt(this.camera.forward(), vec3.up()))
+    // This can run well after generate() has already returned (deferred via
+    // pendingResult/OnEnableEvent), so failures here must be handled locally instead
+    // of relying on generate()'s try/catch - an uncaught throw would otherwise leave
+    // busy stuck true forever with no visible error.
+    try {
+      this.hideLoading()
+      this.clearPreview()
+      const settings = GltfSettings.create()
+      settings.convertMetersToCentimeters = true
+      this.previewObj = gltfData.gltfAsset.tryInstantiateWithSetting(this.modelParent, this.previewMaterial, settings)
+      if (!this.previewObj) {
+        throw new Error("Failed to instantiate the generated model")
+      }
+      this.previewObj.getTransform().setWorldPosition(this.modelParent.getTransform().getWorldPosition())
+      this.previewObj.getTransform().setWorldRotation(quat.lookAt(this.camera.forward(), vec3.up()))
 
-    this.previewUrl = gltfData.url
-    this.previewPrompt = prompt
-    this.promptInput.text = ""
-    this.setHasPreview(true)
-    if (this.modelInteractable) {
-      this.modelInteractable.enabled = true
+      this.previewUrl = gltfData.url
+      this.previewPrompt = prompt
+      this.promptInput.text = ""
+      this.setHasPreview(true)
+      if (this.modelInteractable) {
+        this.modelInteractable.enabled = true
+      }
+      this.setStatus("Like it? Push to companion, or discard to retry")
+    } catch (error) {
+      print("Snap3DVoiceGenerate error: " + error)
+      this.setStatus("Failed. Tap Generate 3D to retry")
     }
-    this.setStatus("Like it? Push to companion, or discard to retry")
   }
 
   private onPushPressed = () => {

@@ -8,10 +8,11 @@ import {RectangleButton} from "SpectaclesUIKit.lspkg/Scripts/Components/Button/R
 import {getOrCreateDeviceId} from "./DeviceId"
 
 const MIN_FRAME_SIZE = 0.05
-const CROP_SETTLE_FRAMES = 2
+const CROP_SETTLE_FRAMES = 0.5
 const USE_SOURCE_CROP = false
 const IDLE_STATUS_MESSAGE = "Pinch with both hands and frame a surface"
 const UPLOAD_CONFIRMATION_SECONDS = 2.5
+const TITLE_SCREEN_DISTANCE = 60
 
 type CropRect = {xMin: number; xMax: number; yMin: number; yMax: number}
 
@@ -28,6 +29,11 @@ export class TextureGrab extends BaseScriptComponent {
   @input cardInteractable!: Interactable
   @input cardManipulation!: InteractableManipulation
   @input loadingObject!: SceneObject
+  // Wire this to the SAME menu/title screen SceneObject the other modes use. Texture
+  // Grab is meant to be used while walking around scanning real-world surfaces, so the
+  // menu gets respawned near wherever the user is after every successful snap instead
+  // of staying wherever it was first placed.
+  @input titleScreen!: SceneObject
 
   private supabase!: SupabaseClient
   private camera = WorldCameraFinderProvider.getInstance()
@@ -378,6 +384,7 @@ export class TextureGrab extends BaseScriptComponent {
     print("TextureGrab: outputTex " + outputTex.getWidth() + "x" + outputTex.getHeight())
 
     this.revealCapturedPreview(outputTex)
+    this.respawnTitleScreenNearUser()
     this.hideLoading()
 
     this.setStatus("Encoding…")
@@ -488,6 +495,19 @@ export class TextureGrab extends BaseScriptComponent {
       this.capturedPreviewImage.getSceneObject().enabled = true
     }
     this.setPreviewButtonsVisible(true)
+  }
+
+  private respawnTitleScreenNearUser() {
+    if (!this.titleScreen) {
+      return
+    }
+    const trans = this.titleScreen.getTransform()
+    // camera.forward() is actually the back vector - SIK's own CameraProvider docs call
+    // this out explicitly ("the camera is reversed in Lens Studio") - so placing the
+    // screen via camPos + forward()*distance was spawning it behind the user's head every
+    // time. getForwardPosition() is SIK's own helper for this and negates it correctly.
+    trans.setWorldPosition(this.camera.getForwardPosition(TITLE_SCREEN_DISTANCE))
+    trans.setWorldRotation(quat.lookAt(this.camera.forward(), vec3.up()))
   }
 
   private waitFrames(count: number): Promise<void> {

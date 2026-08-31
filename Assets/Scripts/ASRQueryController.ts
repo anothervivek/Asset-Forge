@@ -18,9 +18,17 @@ export class ASRQueryController extends BaseScriptComponent {
   private lastMicTapTime = 0
   private listeningTimeoutEvent: DelayedCallbackEvent | null = null
   private armed = false
+  private sessionActive = false
 
   onAwake() {
-    print("ASRQueryController: onAwake, creating ASR session")
+    this.startSession()
+  }
+
+  private startSession() {
+    if (this.sessionActive) {
+      return
+    }
+    print("ASRQueryController: creating ASR session")
     const asrSettings = AsrModule.AsrTranscriptionOptions.create()
     asrSettings.mode = AsrModule.AsrMode.HighAccuracy
     asrSettings.silenceUntilTerminationMs = SILENCE_TERMINATION_MS
@@ -59,15 +67,35 @@ export class ASRQueryController extends BaseScriptComponent {
       this.onError.invoke(String(errorCode))
     })
 
-    // Started exactly once, forever: Snap's Spectacles team has confirmed calling
-    // startTranscribing()/stopTranscribing() repeatedly is a known way to break the ASR
-    // service. Mic taps below only toggle whether we act on the stream, never the session itself.
+    // Snap's Spectacles team has confirmed calling startTranscribing()/stopTranscribing()
+    // *repeatedly* is a known way to break the ASR service - so this only runs at launch
+    // and around Texture Grab (the one mode that needs the camera, which ASR blocks per
+    // Spectacles' sensitive-sensor rules), never on every mic tap or every frame.
     try {
       this.asrModule.startTranscribing(asrSettings)
+      this.sessionActive = true
       print("ASRQueryController: startTranscribing() called successfully")
     } catch (error) {
       print("ASRQueryController: startTranscribing() threw: " + error)
     }
+  }
+
+  // Call when entering a mode that needs CameraModule access - ASR and the camera are
+  // both "sensitive sensor" APIs and Spectacles blocks using them at the same time.
+  public suspendSession() {
+    if (!this.sessionActive) {
+      return
+    }
+    this.cancelListening()
+    this.sessionActive = false
+    this.asrModule.stopTranscribing().catch((error) => {
+      print("ASRQueryController: stopTranscribing() rejected: " + error)
+    })
+  }
+
+  // Call when leaving a mode that needed camera access, to bring voice input back.
+  public resumeSession() {
+    this.startSession()
   }
 
   public toggleListening() {

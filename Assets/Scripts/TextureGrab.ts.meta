@@ -37,6 +37,7 @@
     screenCropTexture: false
     statusText: false
     supabaseProject: false
+    titleScreen: false
   ScriptTypesHidden:
     {}
   ReadMe: !<reference> 00000000-0000-0000-0000-000000000000
@@ -57,6 +58,7 @@
       cardInteractable: !<MappingBased.AssignableType_3> 00000000-0000-0000-0000-000000000000
       cardManipulation: !<MappingBased.AssignableType_4> 00000000-0000-0000-0000-000000000000
       loadingObject: !<reference.SceneObject> 00000000-0000-0000-0000-000000000000
+      titleScreen: !<reference.SceneObject> 00000000-0000-0000-0000-000000000000
   ScriptTypes:
     -
       {}
@@ -72,3 +74,4 @@
     - // @input AssignableType_3 cardInteractable
     - // @input AssignableType_4 cardManipulation
     - // @input SceneObject loadingObject
+    - // @input SceneObject titleScreen

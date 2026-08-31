@@ -2,20 +2,32 @@ import {createClient, type SupabaseClient} from "SupabaseClient.lspkg/supabase-s
 import {BaseButton} from "SpectaclesUIKit.lspkg/Scripts/Components/Button/BaseButton"
 import {TextInputField} from "SpectaclesUIKit.lspkg/Scripts/Components/TextInputField/TextInputField"
 import animate from "SpectaclesInteractionKit.lspkg/Utils/animate"
-import {Imagen} from "RemoteServiceGateway.lspkg/HostedExternal/Imagen"
+import {Gemini} from "RemoteServiceGateway.lspkg/HostedExternal/Gemini"
 import {GoogleGenAITypes} from "RemoteServiceGateway.lspkg/HostedExternal/GoogleGenAITypes"
 import {OpenAI} from "RemoteServiceGateway.lspkg/HostedExternal/OpenAI"
 import {OpenAITypes} from "RemoteServiceGateway.lspkg/HostedExternal/OpenAITypes"
 import {Promisfy} from "RemoteServiceGateway.lspkg/Utils/Promisfy"
 import {ASRQueryController} from "./ASRQueryController"
 import {getOrCreateDeviceId} from "./DeviceId"
+import {startFlavorRotation} from "./FlavorTextRotator"
 
 const IDLE_STATUS_MESSAGE = "Tap the mic to speak, or type a prompt"
 const UPLOAD_CONFIRMATION_SECONDS = 2.5
-// If this 404s with "not found or your project does not have access to it" for every
-// model id, the RSG "Google Token" credential (see RemoteServiceGatewayCredentials) does
-// not have Imagen access provisioned on Snap's side - it is not a wrong model name.
-const IMAGEN_MODEL = "imagen-3.0-generate-002"
+const IMAGE_FLAVOR_WORDS = [
+  "Forging your image…",
+  "Mixing pixels…",
+  "Conjuring color…",
+  "Dreaming in light…",
+  "Synthesizing…",
+  "Sketching ideas…",
+  "Rendering imagination…",
+]
+// Google retired the old Vertex AI Imagen predict endpoint (imagen-3.0-generate-002
+// and friends) on 2026-06-30 as part of folding image generation into Gemini itself -
+// every "publishers/google/models/..." request 404s now regardless of model id. This
+// is its replacement: the Gemini generateContent API with an IMAGE response modality,
+// a completely different (and still-live) endpoint shape. See ExampleGeminiCalls.ts.
+const GEMINI_IMAGE_MODEL = "gemini-2.5-flash-image"
 // OpenAI retired DALL-E (dall-e-2 and dall-e-3) on 2026-05-12; gpt-image-1 is its replacement
 // and only supports 1024x1024 / 1024x1536 / 1536x1024 / auto sizes, no response_format param.
 const OPENAI_IMAGE_MODEL: OpenAITypes.ImageGenerate.Model = "gpt-image-1"
@@ -45,6 +57,9 @@ export class GeminiTextureGenerate extends BaseScriptComponent {
 
   private previewTexture: Texture | null = null
   private previewPrompt: string | null = null
+  // A generation that finished while this mode was switched away - held until the
+  // mode is re-enabled instead of applying it into a hidden hierarchy and losing it.
+  private pendingResult: {texture: Texture; prompt: string} | null = null
 
   private statusRevertEvent: DelayedCallbackEvent | null = null
 
@@ -100,7 +115,18 @@ export class GeminiTextureGenerate extends BaseScriptComponent {
     this.previewImage.getSceneObject().enabled = false
 
     this.createEvent("OnDisableEvent").bind(() => {
+      // Only stop the mic - never clear busy/preview state here. Switching modes
+      // must not cancel an in-flight generation or discard an unconfirmed result;
+      // both need to survive in the background until the user pushes or discards.
       this.voiceController.cancelListening()
+    })
+
+    this.createEvent("OnEnableEvent").bind(() => {
+      if (this.pendingResult) {
+        const {texture, prompt} = this.pendingResult
+        this.pendingResult = null
+        this.showPreview(texture, prompt)
+      }
     })
 
     this.createEvent("OnStartEvent").bind(() => {
@@ -175,48 +201,53 @@ export class GeminiTextureGenerate extends BaseScriptComponent {
 
   private async generate(prompt: string) {
     this.busy = true
-    this.setStatus('Generating "' + prompt + '" with Imagen…')
+    this.setStatus("Forging your image…")
     this.showLoading()
+    const stopFlavor = startFlavorRotation(this, IMAGE_FLAVOR_WORDS, (word) => this.setStatus(word))
 
     try {
       let texture: Texture
       try {
-        texture = await this.generateWithImagen(prompt)
-      } catch (imagenError) {
-        print("GeminiTextureGenerate: Imagen failed, falling back to OpenAI image generation: " + imagenError)
-        this.setStatus('Imagen unavailable, trying OpenAI for "' + prompt + '"…')
+        texture = await this.generateWithGemini(prompt)
+      } catch (geminiError) {
+        // Silent fallback by design - the user just sees the flavor rotation continue
+        // regardless of which provider actually served the result.
+        print("GeminiTextureGenerate: Gemini failed, falling back to OpenAI image generation: " + geminiError)
         texture = await this.generateWithOpenAIImage(prompt)
       }
-      this.showPreview(texture, prompt)
+      if (this.isModeActive()) {
+        this.showPreview(texture, prompt)
+      } else {
+        // Mode was switched away mid-generation - hold the result and apply it once
+        // the mode is re-enabled (OnEnableEvent) instead of updating a hidden UI.
+        this.pendingResult = {texture, prompt}
+      }
     } catch (error) {
       print("GeminiTextureGenerate error: " + error)
       this.setStatus("Failed. Tap Generate to retry")
     } finally {
+      stopFlavor()
       this.busy = false
       this.hideLoading()
     }
   }
 
-  private async generateWithImagen(prompt: string): Promise<Texture> {
-    const request: GoogleGenAITypes.Imagen.ImagenRequest = {
-      model: IMAGEN_MODEL,
+  private async generateWithGemini(prompt: string): Promise<Texture> {
+    const request: GoogleGenAITypes.Gemini.Models.GenerateContentRequest = {
+      model: GEMINI_IMAGE_MODEL,
+      type: "generateContent",
       body: {
-        instances: [{prompt}],
-        parameters: {
-          sampleCount: 1,
-          addWatermark: false,
-          aspectRatio: "1:1",
-          enhancePrompt: true,
-          language: "en",
-        },
+        contents: [{role: "user", parts: [{text: prompt}]}],
+        generationConfig: {responseModalities: ["TEXT", "IMAGE"]},
       },
     }
-    const response = await Imagen.generateImage(request)
-    const prediction = response.predictions?.[0]
-    if (!prediction || !prediction.bytesBase64Encoded) {
-      throw new Error("Imagen didn't return an image")
+    const response = await Gemini.models(request)
+    const parts = response.candidates?.[0]?.content?.parts ?? []
+    const imagePart = parts.find((part) => part.inlineData)
+    if (!imagePart?.inlineData) {
+      throw new Error("Gemini didn't return an image")
     }
-    return this.decodeTexture(prediction.bytesBase64Encoded)
+    return this.decodeTexture(imagePart.inlineData.data)
   }
 
   private async generateWithOpenAIImage(prompt: string): Promise<Texture> {
@@ -316,16 +347,24 @@ export class GeminiTextureGenerate extends BaseScriptComponent {
   }
 
   private showPreview(texture: Texture, prompt: string) {
-    this.hideLoading()
-    this.clearPreview()
-    this.previewImage.mainPass.baseTex = texture
-    this.previewTexture = texture
-    this.previewPrompt = prompt
-    this.promptInput.text = ""
+    // This can run well after generate() has already returned (deferred via
+    // pendingResult/OnEnableEvent), so failures here must be handled locally instead
+    // of relying on generate()'s try/catch.
+    try {
+      this.hideLoading()
+      this.clearPreview()
+      this.previewImage.mainPass.baseTex = texture
+      this.previewTexture = texture
+      this.previewPrompt = prompt
+      this.promptInput.text = ""
 
-    this.previewImage.getSceneObject().enabled = true
-    this.setHasPreview(true)
-    this.setStatus("Like it? Push to companion, or discard to retry")
+      this.previewImage.getSceneObject().enabled = true
+      this.setHasPreview(true)
+      this.setStatus("Like it? Push to companion, or discard to retry")
+    } catch (error) {
+      print("GeminiTextureGenerate error: " + error)
+      this.setStatus("Failed. Tap Generate to retry")
+    }
   }
 
   private onPushPressed = () => {
@@ -402,7 +441,7 @@ export class GeminiTextureGenerate extends BaseScriptComponent {
 
   private decodeTexture(base64: string): Promise<Texture> {
     return new Promise((resolve, reject) => {
-      Base64.decodeTextureAsync(base64, resolve, () => reject(new Error("Failed to decode Imagen image")))
+      Base64.decodeTextureAsync(base64, resolve, () => reject(new Error("Failed to decode generated image")))
     })
   }
 
